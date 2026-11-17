@@ -5,7 +5,7 @@
  */
 import { writeFile, stat } from "node:fs/promises";
 import path from "node:path";
-import sharp from "sharp";
+import sharp, { type OutputInfo } from "sharp";
 import { ffmpeg, probeDisplaySize, probeDurationMs, run } from "./ffmpeg";
 
 export interface FrameSize {
@@ -96,18 +96,26 @@ const LAPLACIAN = [0, 1, 0, 1, -4, 1, 0, 1, 0];
  * Sharpness = variance of the Laplacian on a 640 px-wide grayscale copy.
  * Higher is sharper. The convolution output is offset by 128 so negative
  * responses aren't clipped to 0 by the 8-bit pipeline.
+ *
+ * Each step is materialized to a raw buffer on purpose: sharp's `stats()`
+ * reports on the pipeline's INPUT, so `.convolve().stats()` in one chain
+ * silently returns the stats of the unfiltered image.
  */
 export async function sharpness(imageFile: string): Promise<number> {
-  const { data, info } = await sharp(imageFile)
+  const grey = await sharp(imageFile)
     .resize({ width: 640 })
     .greyscale()
     .raw()
     .toBuffer({ resolveWithObject: true });
-  const stats = await sharp(data, { raw: { width: info.width, height: info.height, channels: info.channels } })
+  const lap = await sharp(grey.data, { raw: rawInfo(grey.info) })
     .convolve({ width: 3, height: 3, kernel: LAPLACIAN, scale: 1, offset: 128 })
-    .stats();
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const stats = await sharp(lap.data, { raw: rawInfo(lap.info) }).stats();
   const sd = stats.channels[0].stdev;
   return Number.isFinite(sd) ? sd * sd : 0;
 }
+
+const rawInfo = (i: OutputInfo) => ({ width: i.width, height: i.height, channels: i.channels as 1 | 2 | 3 | 4 });
 
 export { probeDurationMs };
