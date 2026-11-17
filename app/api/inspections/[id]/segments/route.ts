@@ -87,7 +87,11 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/inspections
     update video_segments set status = 'uploaded'
     where id = ${claim.segmentId} and status = 'uploading'`;
   if (done.count === 0) {
-    await removeObjects([path]).catch(() => {});
+    // Our row was retaken (deleted) mid-upload. A re-upload of the same part
+    // uses the same path, so only remove the file if no row claims it now —
+    // otherwise we'd delete the retry's file.
+    const [claimed] = await sql`select 1 from video_segments where original_path = ${path}`;
+    if (!claimed) await removeObjects([path]).catch(() => {});
     return jsonError(409, `Part ${n} was removed during upload`);
   }
   if (claim.previousPath) await removeObjects([claim.previousPath]).catch(() => {});

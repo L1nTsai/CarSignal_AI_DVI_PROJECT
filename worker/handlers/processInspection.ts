@@ -200,8 +200,8 @@ export function makeProcessInspection(analyzeFn: AnalyzeFn = defaultAnalyze): Jo
 
       const stitched = insp.video_path ? await existingStitched(insp) : await convert(insp.id, ctx);
 
-      // Cancelled while converting? Don't spend a Gemini call. (The stitched video
-      // is kept, so a Retry goes straight to the AI step.)
+      // Cancelled while converting? Don't spend a Gemini call. (Cancel is final;
+      // the inspection can only be deleted now.)
       const [now] = await sql<{ status: string }[]>`select status from inspections where id = ${insp.id}`;
       if (now?.status !== "processing") {
         ctx.log("inspection no longer processing (cancelled?); skipping the AI step", { status: now?.status ?? "missing" });

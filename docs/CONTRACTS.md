@@ -40,7 +40,7 @@ change their shapes without coordinating. The full spec is `docs/PLAN.md`.
 | `POST /api/inspections` | `CreateInspectionResponse` (201) | route |
 | `GET /api/inspections/[id]` | `InspectionDetail` | `lib/queries/inspection.ts#getInspectionDetail` |
 | `GET /api/share/[token]?v=` | `ShareResponse` | `lib/queries/share.ts#getShare` |
-| `GET /api/media/[...path]` | Tech-side Storage proxy, Range/206 | `lib/mediaProxy.ts` |
+| `GET /api/media/[...path]` | Tech-side Storage proxy, Range/206. Cached as immutable, except recording pieces (`no-store`: a retake reuses the path; see `isOverwritablePath`) | `lib/mediaProxy.ts` |
 | `GET /api/share/[token]/media/[versionClipId]/clip\|thumbnail` | Customer-side media, scoped to the token | `lib/mediaProxy.ts` |
 | `POST /api/inspections/[id]/segments?n=` | 201 `{ segment_number, status }`; 409 `code: already_uploaded \| not_recording` | recorder |
 | `DELETE /api/inspections/[id]/segments/[n]` | 204; only the highest n, only while recording | recorder |

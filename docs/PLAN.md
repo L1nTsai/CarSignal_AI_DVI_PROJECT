@@ -56,7 +56,7 @@ The brief's examples:
 | Manual mode | The tech can change **everything**: name, note, rating, clip start/end, thumbnail, adding/removing/reordering clips, adding/deleting/reordering lines. The AI's original values are kept. |
 | Customer and vehicle fields | customer name, vehicle year, make, model, VIN. Entered **in the editor**. **All required before sending.** |
 | Sending | The tech reviews, then hits **Send to customer**. Each Send creates a **frozen version**. The customer sees the latest version, with "Updated" badges and access to older versions. Edits after sending become visible only after **Send update**. |
-| Edit history | Every save by the tech is logged in an append-only table that's internal only. |
+| Edit history | Every save by the tech to lines and clips is logged in an append-only table that's internal only. Customer/vehicle detail saves are **not** logged there (confirmed 2026-11-17); "unsent changes" catches them by comparing with the last sent version's copy. |
 | Customer page | A summary at the top (counts by rating), then lines **grouped by rating, Needs attention first**, keeping the tech's order within each group. Shows name, rating, note, photos and clips. No quotes, no edit controls, no AI internals. |
 | Customer approval | **Out of scope.** |
 | Home page | A basic list of inspections at `/`. |
@@ -868,7 +868,7 @@ The "pairing" is just both devices opening the same inspection. No pairing state
 
 The tech can close the page and come back later.
 
-During Converting and AI reviewing there's a **Cancel processing** button with an in-page confirm. It lands on the failed view, titled "Processing cancelled", where Retry starts again (skipping straight to the AI step if the video was already joined). Added 2026-11-17.
+During Converting and AI reviewing there's a **Cancel processing** button with an in-page confirm. It lands on the failed view, titled "Processing cancelled". **Cancelling is final** (changed 2026-11-17): there's no Retry, and `POST .../retry` returns 409 for a cancelled inspection; it can only be deleted from the home list. Added 2026-11-17.
 
 **`failed`.** Shows the failure reason and a **Retry** button.
 
@@ -903,7 +903,7 @@ During Converting and AI reviewing there's a **Cancel processing** button with a
 
 This page is read-only and shows the **latest version**.
 
-- **Header:** vehicle and customer, the date, the version, and "Updated {date}" when the version is above 1.
+- **Header:** vehicle and customer, the VIN (confirmed 2026-11-17), the date, the version, and "Updated {date}" when the version is above 1.
 - **Summary:** e.g. "2 need attention · 1 to monitor · 5 good".
 - **Line sections:** **Needs attention → Monitor → Good**, keeping the tech's order within each section.
 - **Each line:** name, rating badge, note, main photo (tap to play the main clip inline), "+N more clips", and an **Updated** or **New** badge compared with the previous version.
@@ -933,7 +933,7 @@ This page is read-only and shows the **latest version**.
 | `DELETE /api/inspections/[id]/segments/[n]` | Retake. Only while `recording`, and only the highest `n`. |
 | `POST /api/inspections/[id]/finish` | Requires ≥1 segment, all `uploaded`. Sets `processing`/`converting` and queues `process_inspection`. |
 | `POST /api/inspections/[id]/cancel` | Only while `processing` and the step is `converting` or `analyzing` (409 otherwise; cutting is quick and lines are saved). Sets `failed` with "Processing was cancelled." and fails queued jobs. A running job skips the AI step if it hasn't started it, or discards its result. |
-| `POST /api/inspections/[id]/retry` | Only from `failed`. Sets `processing` and queues the job again. |
+| `POST /api/inspections/[id]/retry` | Only from `failed`, and not after a cancel (409; cancelling is final). Sets `processing` and queues the job again. |
 | `POST /api/inspections/[id]/lines` | Add a tech line |
 | `POST /api/inspections/[id]/lines/reorder` | Calls `reorder_lines` |
 | `PATCH /api/lines/[lineId]` | name, note, rating |
@@ -1023,7 +1023,7 @@ Test logic that can actually break. Don't aim for a coverage number.
   - `unsupportedNumbers`
   - Gemini output validation and repair, using recorded JSON fixtures that include bad timestamps and empty quotes
   - the version diff: added, changed, removed
-- **Database tests** against the local DB:
+- **Database tests** against the local DB (`npm run test:db`, `tests/db/`; each test rolls back):
   - `send_report` refuses each invalid case and creates correct frozen copies
   - the constraints in section 4 reject bad rows
   - `log_edit` records tech edits, skips worker bookkeeping, and handles deleting a whole inspection

@@ -35,7 +35,9 @@ export const extractFrame: JobHandler = {
     const frame = await grabFrame(clip.inspection_id, stitched, t, ctx.tmpDir);
     if (!frame) throw new JobError(`no frame at ${t} ms`, { retryable: false });
 
-    const saved = await withActor("ai", async (tx) => {
+    // 'tech', not 'ai': this job only exists because the tech pressed "Use current
+    // frame", so the thumbnail change is their edit (it must count as an unsent change).
+    const saved = await withActor("tech", async (tx) => {
       const [cur] = await tx`select id from clips where id = ${clip.id} for update`;
       if (!cur) return false;
       await tx`

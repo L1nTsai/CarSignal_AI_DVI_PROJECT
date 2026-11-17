@@ -1,7 +1,7 @@
 /**
  * POST /api/inspections/[id]/cancel — stop processing during converting or AI
- * review. The inspection becomes `failed` ("Processing was cancelled"), so the
- * failed view offers Retry and Delete.
+ * review. The inspection becomes `failed` ("Processing was cancelled"). This is
+ * final: the retry route refuses cancelled inspections; they can only be deleted.
  *
  * Queued jobs are marked failed so the worker never claims them. A job that's
  * already running finishes its current step, then finds the inspection is no

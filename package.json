@@ -10,6 +10,7 @@
     "worker": "tsx --env-file=.env.local worker/index.ts",
     "dev:all": "concurrently -k -n web,worker -c blue,magenta \"npm:dev\" \"npm:worker\"",
     "test": "vitest run",
+    "test:db": "node --env-file=.env.local node_modules/vitest/vitest.mjs run --config vitest.db.config.mts",
     "typecheck": "next typegen && tsc --noEmit",
     "seed:demo": "tsx --env-file=.env.local scripts/seed-demo.ts",
     "tunnel": "cloudflared tunnel --url http://localhost:3000",
