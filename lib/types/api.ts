@@ -19,6 +19,8 @@ import type {
 
 export interface ApiError {
   error: string;
+  /** Machine-readable reason, when a client needs to branch on it. */
+  code?: string;
 }
 
 // ── GET /api/inspections ─────────────────────────────────────────────────────

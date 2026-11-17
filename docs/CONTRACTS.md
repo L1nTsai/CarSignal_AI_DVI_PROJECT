@@ -22,13 +22,13 @@ change their shapes without coordinating. The full spec is `docs/PLAN.md`.
 | `sql` | Tagged-template Postgres client (postgres.js v4). Timestamps come back as ISO strings, bigint as a string. |
 | `withActor('tech' \| 'ai', tx => …)` | A transaction with `app.actor` set. **Every write to `line_items`/`clips` must go through this** so the edit log gets the right actor. Route handlers use `'tech'`, the worker uses `'ai'`. |
 | `isRaisedException(e)` | True for `raise exception` errors (for example from `send_report`). Return their `message` as a 409. |
-| `uploadStream(path, body, type, len?)` | Streams a request body straight into Storage. Use it for segment uploads; don't buffer the whole file. |
+| `uploadStream(path, body, type, len?, { upsert? })` | Streams a request body straight into Storage. Use it for segment uploads; don't buffer the whole file. `upsert` is only for recording pieces (a retake reuses the path). |
 | `uploadFile`, `downloadToFile`, `removeObjects`, `removePrefix(id)` | Worker and delete helpers. |
 | `storagePaths.*` (`lib/paths.ts`) | The only place that builds storage paths. |
 
 ## Route helpers (`lib/http.ts`)
 
-`jsonError(status, msg)` returns `{ error }`. Also `isUuid` and `isShareToken`. Validate bodies with `zod`.
+`jsonError(status, msg, code?)` returns `{ error, code? }`. Also `isUuid` and `isShareToken`. Validate bodies with `zod`.
 
 ## Implemented endpoints (foundation-owned)
 
@@ -40,6 +40,9 @@ change their shapes without coordinating. The full spec is `docs/PLAN.md`.
 | `GET /api/share/[token]?v=` | `ShareResponse` | `lib/queries/share.ts#getShare` |
 | `GET /api/media/[...path]` | Tech-side Storage proxy, Range/206 | `lib/mediaProxy.ts` |
 | `GET /api/share/[token]/media/[versionClipId]/clip\|thumbnail` | Customer-side media, scoped to the token | `lib/mediaProxy.ts` |
+| `POST /api/inspections/[id]/segments?n=` | 201 `{ segment_number, status }`; 409 `code: already_uploaded \| not_recording` | recorder |
+| `DELETE /api/inspections/[id]/segments/[n]` | 204; only the highest n, only while recording | recorder |
+| `POST /api/inspections/[id]/finish` | 200 `{ ok }`; idempotent once processing | recorder |
 
 Every other endpoint in PLAN §11 is owned by the feature agents.
 
@@ -76,3 +79,10 @@ video: a 20 s landscape part, then a 16 s portrait part, with the pause point at
 The ready_for_review one has no VIN, so Send is disabled. Its "Engine Air Filter" note
 contains "12,000 miles", which was never said, to trigger the grounding warning.
 It prints the URLs. Sharpness values are fake.
+
+## Recorder (`/inspections/[id]/record`)
+
+- `components/recorder/Recorder.tsx` handles the camera, pieces, timer and cap. `lib/recorder/uploadQueue.ts` is the serial
+  upload queue, unit-tested with an injected transport. `lib/recording.ts` holds the format list and shared constants.
+- On reload, it keeps the uploaded pieces and deletes everything from the first non-uploaded piece onward.
+- After Finish it calls `router.replace('/inspections/[id]')`. That page is owned by the inspection-page agent.
