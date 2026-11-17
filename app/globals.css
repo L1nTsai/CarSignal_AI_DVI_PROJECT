@@ -1,0 +1,135 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens — Vercel/Geist-inspired, flat: no shadows, no glows, no
+ * gradients. Use the Tailwind color names below (bg-surface, text-muted,
+ * border-border, ...) instead of raw hex values in components.
+ */
+:root {
+  --background: #ffffff;
+  --surface: #fafafa;        /* subtle panels */
+  --surface-hover: #f2f2f2;
+  --border: #ebebeb;
+  --border-strong: #c9c9c9;
+  --foreground: #171717;
+  --muted: #666666;
+  --subtle: #8f8f8f;
+
+  --primary: #171717;        /* primary buttons */
+  --primary-fg: #ffffff;
+  --primary-hover: #383838;
+
+  --link: #0068d6;
+  --focus: #0070f3;
+
+  /* Ratings / statuses: text + bg + border, always paired with a label. */
+  --red-fg: #cb2a2f;
+  --red-bg: #fff0f0;
+  --red-border: #ffd1d2;
+  --amber-fg: #a35200;
+  --amber-bg: #fff6e5;
+  --amber-border: #ffdc99;
+  --green-fg: #297a3a;
+  --green-bg: #effbef;
+  --green-border: #c3ebc6;
+  --blue-fg: #0068d6;
+  --blue-bg: #f0f7ff;
+  --blue-border: #cce3ff;
+  --gray-fg: #4d4d4d;
+  --gray-bg: #f2f2f2;
+  --gray-border: #e0e0e0;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --surface: #111111;
+    --surface-hover: #1a1a1a;
+    --border: #2e2e2e;
+    --border-strong: #454545;
+    --foreground: #ededed;
+    --muted: #a1a1a1;
+    --subtle: #7c7c7c;
+
+    --primary: #ededed;
+    --primary-fg: #0a0a0a;
+    --primary-hover: #cccccc;
+
+    --link: #52a8ff;
+    --focus: #52a8ff;
+
+    --red-fg: #ff6166;
+    --red-bg: #2a1314;
+    --red-border: #5c1d20;
+    --amber-fg: #ffb224;
+    --amber-bg: #271a00;
+    --amber-border: #573a00;
+    --green-fg: #62c073;
+    --green-bg: #0f2414;
+    --green-border: #1f4d29;
+    --blue-fg: #52a8ff;
+    --blue-bg: #0d1d33;
+    --blue-border: #12345e;
+    --gray-fg: #a1a1a1;
+    --gray-bg: #1a1a1a;
+    --gray-border: #333333;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-primary: var(--primary);
+  --color-primary-fg: var(--primary-fg);
+  --color-primary-hover: var(--primary-hover);
+  --color-link: var(--link);
+  --color-focus: var(--focus);
+
+  --color-red-fg: var(--red-fg);
+  --color-red-bg: var(--red-bg);
+  --color-red-border: var(--red-border);
+  --color-amber-fg: var(--amber-fg);
+  --color-amber-bg: var(--amber-bg);
+  --color-amber-border: var(--amber-border);
+  --color-green-fg: var(--green-fg);
+  --color-green-bg: var(--green-bg);
+  --color-green-border: var(--green-border);
+  --color-blue-fg: var(--blue-fg);
+  --color-blue-bg: var(--blue-bg);
+  --color-blue-border: var(--blue-border);
+  --color-gray-fg: var(--gray-fg);
+  --color-gray-bg: var(--gray-bg);
+  --color-gray-border: var(--gray-border);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* One focus style everywhere: a plain outline, no glow. */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Media never crops: works for portrait and landscape (plan §10). */
+video,
+img.media {
+  object-fit: contain;
+  background: #000;
+}
