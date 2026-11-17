@@ -4,13 +4,15 @@
  *  1. converting (skipped when inspection.video_path is set, i.e. a re-process
  *     or a retry after the stitch succeeded): download segments, normalize each
  *     to one format, concat -> stitched.mp4, upload, save durations/offsets.
- *  2. analyzing: `analyze` (AI agent; placeholder in worker/lib/analyze.ts),
- *     then assertValidatedAnalysis().
+ *  2. analyzing: `analyze` (Gemini, lib/ai/analyze.ts), then
+ *     assertValidatedAnalysis() and the grounding check. Grounding warnings
+ *     aren't stored (the editor derives them), so here they're only logged.
  *  3. saving: one 'ai' transaction — replace lines, insert ai_suggestions /
  *     mentions / pending clips (ranges from lib/clips), step 'cutting', queue
  *     one cut_clip job per clip.
  */
 import path from "node:path";
+import { unsupportedNumbers } from "@/lib/ai/grounding";
 import { assertValidatedAnalysis, type AnalyzeFn, type ValidatedAnalysis } from "@/lib/ai/types";
 import { computeClipRanges, type ClipRangeSettings, type RangeMention } from "@/lib/clips";
 import { sql, withActor } from "@/lib/db";
@@ -206,6 +208,10 @@ export function makeProcessInspection(analyzeFn: AnalyzeFn = defaultAnalyze): Jo
       });
       const analysis = assertValidatedAnalysis(raw, stitched.duration_ms);
       if (analysis.dropped.length) ctx.log("AI lines dropped during repair", { dropped: analysis.dropped });
+      const ungrounded = analysis.lines
+        .map((l) => ({ line: l.component_name, numbers: unsupportedNumbers(l.note, l.mentions.map((m) => m.quote)) }))
+        .filter((g) => g.numbers.length > 0);
+      if (ungrounded.length) ctx.log("AI notes mention numbers the tech didn't say", { ungrounded });
 
       const clips = await saveResults(insp.id, analysis, stitched);
       ctx.log("saved AI results", { lines: analysis.lines.length, clips, model: analysis.model });

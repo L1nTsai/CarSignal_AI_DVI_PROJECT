@@ -4,7 +4,7 @@ import { Button, Card, Input, Textarea } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { formatMs } from "@/lib/editor/clipRange";
 import { apiSend } from "@/lib/fetcher";
-import { unsupportedNumbers } from "@/lib/grounding";
+import { unsupportedNumbers } from "@/lib/ai/grounding";
 import type { LineDetail } from "@/lib/types/api";
 import type { LineRating } from "@/lib/types/db";
 import { ClipStatus } from "./ClipPanel";
