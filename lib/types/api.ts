@@ -37,7 +37,7 @@ export interface InspectionListItem {
   line_count: number;
   /** Main photo of the first line, if any (tech media URL). */
   photo_url: string | null;
-  /** True once sent at least once. Sent inspections can't be deleted. */
+  /** True once sent at least once. Deleting it then also disables the customer link. */
   ever_sent: boolean;
   /** Only meaningful when status === 'sent'. */
   unsent_changes: boolean;

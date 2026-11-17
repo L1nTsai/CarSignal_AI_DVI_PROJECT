@@ -61,7 +61,7 @@ The brief's examples:
 | Customer approval | **Out of scope.** |
 | Home page | A basic list of inspections at `/`. |
 | Orientation | **Either, whichever the technician prefers.** The recorder and the tips don't steer it, and the pipeline and players must handle portrait, landscape, and a switch partway through. |
-| Deleting inspections | Allowed from the home list for inspections that were **never sent**. Sent inspections can't be deleted. |
+| Deleting inspections | Allowed from the home list for any inspection that isn't processing, **including sent ones** (changed 2026-11-17; migration `0002`). Deleting a sent inspection deletes its sent versions too, so the customer link stops working; the confirm says so. |
 | Re-process | A **development-only** button that re-runs the AI on an existing recording without recording again. It replaces all lines. |
 | Every line needs media | A line can't be sent unless it has **at least one ready clip** with a thumbnail. |
 | Known risk | There's an open WebKit bug about iOS 26 MediaRecorder corrupting files. The owner said to deal with it only if it happens. **If recordings come out corrupted on an iPhone, stop and tell the owner. Don't add a workaround on your own.** |
@@ -126,7 +126,7 @@ This migration was checked against Postgres 16, with an `extensions` schema crea
 - Reorder, `send_report` versions 1 and 2, and the frozen copies all work.
 - The edit log records the right actor, and worker bookkeeping isn't logged.
 - The VIN, clip-range, thumbnail-ownership and same-inspection checks reject bad data.
-- Deleting a never-sent inspection cascades with no leftover edits, and deleting a sent one is blocked.
+- Deleting an inspection cascades with no leftover edits; for a sent one, its report versions cascade too (`0002`).
 - Only one active process job is allowed per inspection, and `claim_job` works.
 
 ```sql
@@ -840,7 +840,7 @@ The layout is mobile-first: one column, large tap targets. Ratings always show *
 
 - A list of inspections, newest first.
 - Each row shows vehicle and customer ("Untitled inspection" until filled in), a status badge, the date, and an "Unsent changes" badge when that applies.
-- Inspections that were never sent have a **Delete** action with an in-page confirm. It's hidden for sent inspections and disabled while processing.
+- Every inspection has a **Delete** action with an in-page confirm, disabled while processing. For a sent inspection the confirm warns that the customer's link will stop working.
 - A **New inspection** button. On a phone (`pointer: coarse` and a narrow screen) it creates the inspection and goes straight to the recorder. On a laptop it opens `/inspections/[id]`, which shows the pairing QR code.
 
 ### `/inspections/[id]/record` Recorder
@@ -925,7 +925,7 @@ This page is read-only and shows the **latest version**.
 | `GET /api/inspections` | Home list |
 | `GET /api/inspections/[id]` | Everything for the inspection page: inspection, segments, lines, ai_suggestions, mentions, clips, frames, unsent-changes flag, progress counts |
 | `PATCH /api/inspections/[id]` | Customer and vehicle fields |
-| `DELETE /api/inspections/[id]` | Only when status is `recording`, `ready_for_review` or `failed`. Return `409` for `sent`, and for `processing` to avoid racing the worker. Deletes the row (everything cascades), then all Storage files under `{id}/`. |
+| `DELETE /api/inspections/[id]` | Any status except `processing` (409, to avoid racing the worker). Deletes the row (everything cascades, including sent versions), then all Storage files under `{id}/`. |
 | `POST /api/inspections/[id]/reprocess` | Development only: returns `404` unless `ENABLE_REPROCESS=true`. Only from `ready_for_review`. Sets `processing`/`analyzing` and queues `process_inspection`, which replaces all lines. |
 | `POST /api/inspections/[id]/segments?n=` | Upload a piece. Only allowed while `recording`. |
 | `DELETE /api/inspections/[id]/segments/[n]` | Retake. Only while `recording`, and only the highest `n`. |

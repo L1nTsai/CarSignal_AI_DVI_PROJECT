@@ -4,8 +4,8 @@
  *
  * New inspection: on a phone (coarse pointer + narrow screen) create and go
  * straight to the recorder; on a laptop open /inspections/[id], which shows
- * the pairing QR code. Never-sent inspections can be deleted with an in-page
- * confirm; sent ones can't, and processing ones must finish first.
+ * the pairing QR code. Inspections can be deleted with an in-page confirm
+ * (processing ones must finish first); deleting a sent one disables the customer link.
  */
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -80,7 +80,6 @@ function InspectionRow({ item: i, onDeleted }: { item: InspectionListItem; onDel
   const vehicle = [i.vehicle_year, i.vehicle_make, i.vehicle_model].filter(Boolean).join(" ");
   const title = vehicle || i.customer_name || "Untitled inspection";
   const subtitle = vehicle ? i.customer_name : null;
-  const canDelete = !i.ever_sent;
   const processing = i.status === "processing";
 
   async function remove() {
@@ -117,7 +116,7 @@ function InspectionRow({ item: i, onDeleted }: { item: InspectionListItem; onDel
             </div>
           </div>
         </Link>
-        {canDelete && !confirming ? (
+        {!confirming ? (
           <Button
             variant="ghost"
             size="sm"
@@ -132,7 +131,11 @@ function InspectionRow({ item: i, onDeleted }: { item: InspectionListItem; onDel
       </div>
       {confirming ? (
         <div className="flex flex-wrap items-center gap-2 border-t border-border bg-surface px-3 py-2">
-          <p className="mr-auto text-sm">Delete this inspection and its recording? This can&apos;t be undone.</p>
+          <p className="mr-auto text-sm">
+            {i.ever_sent
+              ? "Delete this inspection, its recording and every version sent to the customer? The customer's link will stop working. This can't be undone."
+              : "Delete this inspection and its recording? This can't be undone."}
+          </p>
           <Button size="sm" onClick={() => setConfirming(false)} disabled={deleting}>
             Cancel
           </Button>
