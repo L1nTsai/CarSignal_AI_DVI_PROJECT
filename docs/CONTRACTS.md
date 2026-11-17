@@ -8,7 +8,9 @@ change their shapes without coordinating. The full spec is `docs/PLAN.md`.
 - The browser talks **only** to Next.js route handlers. It never talks to Supabase,
   and it never imports `lib/db.ts`, `lib/storage.ts`, `lib/env.ts` or `lib/queries/*`.
 - Client components can import the pure modules: `lib/types/*`, `lib/media.ts`, `lib/ratings.ts`,
-  `lib/fetcher.ts`, `lib/cn.ts`, `lib/paths.ts`, `lib/ai/types.ts`.
+  `lib/fetcher.ts`, `lib/cn.ts`, `lib/paths.ts`, `lib/ai/types.ts`, `lib/ai/grounding.ts`
+  (the one grounding check, used by the editor and logged by the worker), `lib/editor/schemas.ts`,
+  `lib/sharing/*`.
 - Live updates use **SWR polling** (`lib/fetcher.ts`), about every 2 s while something is in progress.
 - No `alert`/`confirm`. Confirmations happen in the page.
 - UI: use `components/ui` and the color tokens in `app/globals.css`. Keep it flat: no shadows,
@@ -65,7 +67,7 @@ that stays the same across versions, for diffing. Media URLs are token-scoped.
 ## Worker (`worker/`)
 
 - `index.ts` runs the loop: claim, run, then succeed / retry with backoff / fail, plus stale-lock requeue. Don't change it lightly.
-- `handlers/*.ts` are **placeholders** that throw `JobError(not implemented)`. Each has a `JobHandler`
+- `handlers/*.ts` implement the jobs; `worker/lib/analyze.ts` re-exports the real Gemini `analyzeInspection`. Each has a `JobHandler`
   with `run(job, ctx)` and an optional `onFinalFailure`. `ctx.tmpDir` is per job and cleaned up afterwards.
 - `lib/ffmpeg.ts`: `ffmpeg(args)`, `probeDurationMs`, `probeDisplaySize` (rotation-aware).
 - `lib/inspection.ts`: `markInspectionFailed`, `setProcessingStep`, `maybeFinishProcessing`.
