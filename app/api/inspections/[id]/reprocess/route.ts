@@ -18,8 +18,9 @@ export async function POST(_req: NextRequest, ctx: RouteContext<"/api/inspection
       const [insp] = await tx<{ status: string; video_path: string | null }[]>`
         select status, video_path from inspections where id = ${id} for update`;
       if (!insp) throw new HttpError(404, "Inspection not found");
+      if (insp.status === "sent") throw new HttpError(409, "Re-process isn't available after sending");
       if (insp.status !== "ready_for_review") {
-        throw new HttpError(409, "Re-process is only available before the report is sent");
+        throw new HttpError(409, "Re-process is only available when the inspection is ready for review");
       }
       if (!insp.video_path) throw new HttpError(409, "There's no stitched video to re-process");
       // Clip cuts / frame extractions still queued would work on lines that are about to be replaced.
