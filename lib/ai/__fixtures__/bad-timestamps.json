@@ -1,0 +1,41 @@
+{
+  "lines": [
+    {
+      "component_name": "  Left Front   Tire ",
+      "rating": "needs_attention",
+      "rating_basis": "stated",
+      "note": "  Inner edge is worn.  ",
+      "mentions": [
+        { "quote": "Coming back to that tire, it's at 3/32.", "visible_start_s": 25.0, "visible_end_s": 28.0, "best_frame_s": 40.0 },
+        { "quote": "The inner edge is worn.", "visible_start_s": -2.5, "visible_end_s": 4.2, "best_frame_s": -1.0 }
+      ]
+    },
+    {
+      "component_name": "Wipers",
+      "rating": "good",
+      "rating_basis": "inferred",
+      "note": "Look good.",
+      "mentions": [
+        { "quote": "These look good.", "visible_start_s": 12.0, "visible_end_s": 12.0, "best_frame_s": 30.0 }
+      ]
+    },
+    {
+      "component_name": "Rear Bumper",
+      "rating": "monitor",
+      "rating_basis": "inferred",
+      "note": "Scuffed.",
+      "mentions": [
+        { "quote": "Bumper's scuffed.", "visible_start_s": 33.0, "visible_end_s": 31.0, "best_frame_s": 32.0 }
+      ]
+    },
+    {
+      "component_name": "Tail Lights",
+      "rating": "good",
+      "rating_basis": "inferred",
+      "note": "Working.",
+      "mentions": [
+        { "quote": "Tail lights work.", "visible_start_s": 35.4, "visible_end_s": 99.0, "best_frame_s": 99.0 }
+      ]
+    }
+  ]
+}

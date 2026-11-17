@@ -1,0 +1,22 @@
+{
+  "lines": [
+    {
+      "component_name": "Wipers",
+      "mentions": [
+        { "quote": "These look good.", "visible_start_s": 14.0, "visible_end_s": 19.0, "best_frame_s": 16.0 }
+      ],
+      "rating": "good",
+      "rating_basis": "inferred",
+      "note": "The wipers look good."
+    },
+    {
+      "component_name": "Left Front Tire",
+      "mentions": [
+        { "quote": "The inner edge is worn. Mark it needs attention.", "visible_start_s": 3.0, "visible_end_s": 9.0, "best_frame_s": 6.0 }
+      ],
+      "rating": "needs_attention",
+      "rating_basis": "stated",
+      "note": "The inner edge of the tire is worn."
+    }
+  ]
+}

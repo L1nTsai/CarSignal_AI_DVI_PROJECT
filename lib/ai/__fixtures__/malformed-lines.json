@@ -1,0 +1,33 @@
+{
+  "lines": [
+    {
+      "component_name": "Brake Pads",
+      "rating": "Needs Attention",
+      "rating_basis": "Stated",
+      "note": "Front pads are at 2 mm.",
+      "mentions": [
+        { "quote": "Front pads are at 2 millimeters, needs attention.", "visible_start_s": 20, "visible_end_s": 24, "best_frame_s": 22 },
+        { "quote": "pads again", "visible_start_s": null, "visible_end_s": 30, "best_frame_s": 29 }
+      ]
+    },
+    {
+      "component_name": "Coolant",
+      "rating": "excellent",
+      "rating_basis": "inferred",
+      "note": "Coolant is full.",
+      "mentions": [
+        { "quote": "Coolant is full.", "visible_start_s": 5, "visible_end_s": 7, "best_frame_s": 6 }
+      ]
+    },
+    "not an object",
+    {
+      "component_name": "Air Filter",
+      "rating": "monitor",
+      "rating_basis": "inferred",
+      "note": "A little dirty.",
+      "mentions": [
+        { "quote": "Air filter's a little dirty.", "visible_start_s": "10", "visible_end_s": 12, "best_frame_s": 11 }
+      ]
+    }
+  ]
+}
