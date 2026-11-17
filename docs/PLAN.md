@@ -868,6 +868,8 @@ The "pairing" is just both devices opening the same inspection. No pairing state
 
 The tech can close the page and come back later.
 
+During Converting and AI reviewing there's a **Cancel processing** button with an in-page confirm. It lands on the failed view, titled "Processing cancelled", where Retry starts again (skipping straight to the AI step if the video was already joined). Added 2026-11-17.
+
 **`failed`.** Shows the failure reason and a **Retry** button.
 
 **`ready_for_review` / `sent`.** The editor:
@@ -930,6 +932,7 @@ This page is read-only and shows the **latest version**.
 | `POST /api/inspections/[id]/segments?n=` | Upload a piece. Only allowed while `recording`. |
 | `DELETE /api/inspections/[id]/segments/[n]` | Retake. Only while `recording`, and only the highest `n`. |
 | `POST /api/inspections/[id]/finish` | Requires ≥1 segment, all `uploaded`. Sets `processing`/`converting` and queues `process_inspection`. |
+| `POST /api/inspections/[id]/cancel` | Only while `processing` and the step is `converting` or `analyzing` (409 otherwise; cutting is quick and lines are saved). Sets `failed` with "Processing was cancelled." and fails queued jobs. A running job skips the AI step if it hasn't started it, or discards its result. |
 | `POST /api/inspections/[id]/retry` | Only from `failed`. Sets `processing` and queues the job again. |
 | `POST /api/inspections/[id]/lines` | Add a tech line |
 | `POST /api/inspections/[id]/lines/reorder` | Calls `reorder_lines` |

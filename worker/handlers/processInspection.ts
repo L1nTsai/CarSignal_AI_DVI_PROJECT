@@ -138,20 +138,20 @@ async function existingStitched(insp: InspectionRow): Promise<Stitched> {
   };
 }
 
-/** Step 3: replace lines with the AI result and queue the cuts. Returns the clip count. */
+/** Step 3: replace lines with the AI result and queue the cuts. Returns the clip count, or null if the inspection stopped processing (cancelled) and nothing was saved. */
 export async function saveResults(
   inspectionId: string,
   analysis: ValidatedAnalysis,
   timeline: { duration_ms: number; segment_starts_ms: number[] },
   settings: ClipRangeSettings = clipRangeSettings(),
-): Promise<number> {
+): Promise<number | null> {
   const flat: RangeMention[] = analysis.lines.flatMap((line, li) => line.mentions.map((m) => ({ line: li, ...m })));
   const ranges = computeClipRanges(flat, timeline, settings);
 
   return withActor("ai", async (tx) => {
     const [insp] = await tx<{ status: string }[]>`
       select status from inspections where id = ${inspectionId} for update`;
-    if (insp?.status !== "processing") return 0;
+    if (insp?.status !== "processing") return null;
 
     await tx`delete from line_items where inspection_id = ${inspectionId}`;
 
@@ -200,6 +200,14 @@ export function makeProcessInspection(analyzeFn: AnalyzeFn = defaultAnalyze): Jo
 
       const stitched = insp.video_path ? await existingStitched(insp) : await convert(insp.id, ctx);
 
+      // Cancelled while converting? Don't spend a Gemini call. (The stitched video
+      // is kept, so a Retry goes straight to the AI step.)
+      const [now] = await sql<{ status: string }[]>`select status from inspections where id = ${insp.id}`;
+      if (now?.status !== "processing") {
+        ctx.log("inspection no longer processing (cancelled?); skipping the AI step", { status: now?.status ?? "missing" });
+        return;
+      }
+
       await setProcessingStep(insp.id, "analyzing");
       const raw = await analyzeFn({
         stitchedPath: stitched.localPath,
@@ -214,6 +222,10 @@ export function makeProcessInspection(analyzeFn: AnalyzeFn = defaultAnalyze): Jo
       if (ungrounded.length) ctx.log("AI notes mention numbers the tech didn't say", { ungrounded });
 
       const clips = await saveResults(insp.id, analysis, stitched);
+      if (clips === null) {
+        ctx.log("inspection no longer processing (cancelled?); AI result discarded", { lines: analysis.lines.length });
+        return;
+      }
       ctx.log("saved AI results", { lines: analysis.lines.length, clips, model: analysis.model });
     },
 
