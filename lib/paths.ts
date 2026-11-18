@@ -21,3 +21,12 @@ export const storagePaths = {
   frame: (inspectionId: string, frameId: string) => `${inspectionId}/frames/${frameId}.jpg`,
   inspectionPrefix: (inspectionId: string) => `${inspectionId}`,
 };
+
+/**
+ * Recording pieces are the one exception to "files are never overwritten": a
+ * retake re-uploads to the same path (upsert). Anything that caches media
+ * (the media proxy) must not treat these as immutable.
+ */
+export function isOverwritablePath(path: string): boolean {
+  return /^[^/]+\/segments\//.test(path);
+}

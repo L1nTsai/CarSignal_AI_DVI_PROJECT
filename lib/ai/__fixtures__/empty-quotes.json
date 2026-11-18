@@ -1,0 +1,40 @@
+{
+  "lines": [
+    {
+      "component_name": "Battery",
+      "rating": "good",
+      "rating_basis": "inferred",
+      "note": "Battery looks fine.",
+      "mentions": [
+        { "quote": "", "visible_start_s": 1, "visible_end_s": 3, "best_frame_s": 2 },
+        { "quote": "Battery looks fine.", "visible_start_s": 5, "visible_end_s": 8, "best_frame_s": 6 },
+        { "quote": "   ", "visible_start_s": 9, "visible_end_s": 10, "best_frame_s": 9.5 }
+      ]
+    },
+    {
+      "component_name": "Hood",
+      "rating": "good",
+      "rating_basis": "inferred",
+      "note": "",
+      "mentions": [
+        { "quote": "  ", "visible_start_s": 11, "visible_end_s": 12, "best_frame_s": 11 }
+      ]
+    },
+    {
+      "component_name": "Windshield",
+      "rating": "monitor",
+      "rating_basis": "inferred",
+      "note": "Small chip.",
+      "mentions": []
+    },
+    {
+      "component_name": "   ",
+      "rating": "good",
+      "rating_basis": "inferred",
+      "note": "Okay, moving on.",
+      "mentions": [
+        { "quote": "Okay, moving on.", "visible_start_s": 13, "visible_end_s": 14, "best_frame_s": 13 }
+      ]
+    }
+  ]
+}

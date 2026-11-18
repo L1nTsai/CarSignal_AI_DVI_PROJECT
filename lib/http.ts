@@ -2,8 +2,8 @@
 import { NextResponse } from "next/server";
 import type { ApiError } from "./types/api";
 
-export function jsonError(status: number, error: string) {
-  return NextResponse.json<ApiError>({ error }, { status });
+export function jsonError(status: number, error: string, code?: string) {
+  return NextResponse.json<ApiError>(code ? { error, code } : { error }, { status });
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

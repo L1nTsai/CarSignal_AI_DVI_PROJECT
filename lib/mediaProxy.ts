@@ -3,12 +3,15 @@
  * so video seeking works (206 Partial Content), especially on iOS Safari.
  * Server-only. Used by /api/media/[...path] and /api/share/[token]/media/...
  */
+import { isOverwritablePath } from "./paths";
 import { objectUrl, storageAuthHeaders } from "./storage";
 
 const PASS_THROUGH = ["content-type", "content-length", "content-range", "accept-ranges", "etag", "last-modified"];
 
 export async function proxyStorageObject(req: Request, storagePath: string): Promise<Response> {
-  const headers: Record<string, string> = { ...storageAuthHeaders() };
+  // identity: Node's fetch would otherwise ask for gzip and silently decompress,
+  // leaving the forwarded Content-Length / Content-Range describing other bytes.
+  const headers: Record<string, string> = { ...storageAuthHeaders(), "accept-encoding": "identity" };
   const range = req.headers.get("range");
   if (range) headers.range = range;
 
@@ -32,8 +35,13 @@ export async function proxyStorageObject(req: Request, storagePath: string): Pro
     if (v) out.set(h, v);
   }
   if (!out.has("accept-ranges")) out.set("accept-ranges", "bytes");
-  // Paths are never overwritten, so responses are immutable.
-  out.set("cache-control", "private, max-age=31536000, immutable");
+  // Paths are never overwritten, so responses are immutable — except recording
+  // pieces, which a retake replaces in place. Caching those would let the
+  // pairing view play (or splice byte ranges from) the old piece.
+  out.set(
+    "cache-control",
+    isOverwritablePath(storagePath) ? "no-store" : "private, max-age=31536000, immutable",
+  );
 
   return new Response(req.method === "HEAD" ? null : upstream.body, { status: upstream.status, headers: out });
 }

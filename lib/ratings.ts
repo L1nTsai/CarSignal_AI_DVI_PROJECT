@@ -31,7 +31,7 @@ export function ratingSummary(lines: { rating: LineRating }[]): string {
 }
 
 export const STATUS_LABEL: Record<InspectionStatus, string> = {
-  recording: "Recording",
+  recording: "Draft",
   processing: "Processing",
   ready_for_review: "Ready for review",
   sent: "Sent",

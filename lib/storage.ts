@@ -49,11 +49,14 @@ export async function uploadStream(
   body: ReadableStream<Uint8Array>,
   contentType: string,
   contentLength?: number,
+  opts: { upsert?: boolean } = {},
 ): Promise<void> {
+  // upsert only for recording pieces: a retaken / re-tried piece reuses its path.
+  // Everything else is never overwritten.
   const headers: Record<string, string> = {
     ...authHeaders(),
     "content-type": contentType,
-    "x-upsert": "false",
+    "x-upsert": opts.upsert ? "true" : "false",
   };
   if (contentLength !== undefined) headers["content-length"] = String(contentLength);
   const res = await fetch(objectWriteUrl(path), {

@@ -17,11 +17,15 @@
  *  - mentions within a line are sorted by visible_start_ms
  *  - lines are sorted by their first mention's visible_start_ms, so the worker
  *    assigns position = index + 1
+ *  - transcript segments (captions: everything said, verbatim) have
+ *    end_ms > start_ms, are within [0, duration_ms], sorted by start_ms and
+ *    don't overlap. May be empty (older responses, or a silent video).
  *
  * If nothing survives validation, the AI module throws a JobError (worker/errors.ts)
  * with userMessage "The AI didn't find any inspected components in this recording."
  */
 import { z } from "zod";
+import { carZoneSchema } from "../carZones";
 
 // ── Input ────────────────────────────────────────────────────────────────────
 export interface AnalyzeInput {
@@ -38,13 +42,23 @@ export type AnalyzeFn = (input: AnalyzeInput) => Promise<ValidatedAnalysis>;
 const rating = z.enum(["good", "monitor", "needs_attention"]);
 const ratingBasis = z.enum(["stated", "inferred"]);
 
+export const rawTranscriptSegmentSchema = z.object({
+  text: z.string(),
+  start_s: z.number(),
+  end_s: z.number(),
+});
+
 export const rawAnalysisSchema = z.object({
+  /** Optional so a response without it still yields lines. */
+  transcript: z.array(rawTranscriptSegmentSchema).optional(),
   lines: z.array(
     z.object({
       component_name: z.string(),
       rating,
       rating_basis: ratingBasis,
       note: z.string(),
+      /** A zone key or "none". Untrusted: anything else becomes null (validate.ts). Optional so older responses parse. */
+      car_zone: z.unknown().optional(),
       mentions: z.array(
         z.object({
           quote: z.string(),
@@ -79,13 +93,25 @@ export const validatedLineSchema = z.object({
   rating,
   rating_basis: ratingBasis,
   note: z.string(),
+  /** Where on the car (lib/carZones.ts); null = no single spot. */
+  car_zone: carZoneSchema.nullable().default(null),
   mentions: z.array(validatedMentionSchema).min(1),
 });
+
+export const transcriptSegmentSchema = z
+  .object({
+    text: z.string().refine((s) => s.trim() !== "", "empty transcript text"),
+    start_ms: ms,
+    end_ms: ms,
+  })
+  .refine((t) => t.end_ms > t.start_ms, "end_ms must be > start_ms");
 
 export const validatedAnalysisSchema = z.object({
   /** Model id actually used (stored in ai_suggestions.model). */
   model: z.string().min(1),
   lines: z.array(validatedLineSchema).min(1),
+  /** Everything the technician said, as timed caption segments. */
+  transcript: z.array(transcriptSegmentSchema).default([]),
   /** Lines dropped during repair, for logging only. */
   dropped: z.array(z.object({ component_name: z.string(), reason: z.string() })),
 });
@@ -93,6 +119,7 @@ export const validatedAnalysisSchema = z.object({
 export type ValidatedMention = z.infer<typeof validatedMentionSchema>;
 export type ValidatedLine = z.infer<typeof validatedLineSchema>;
 export type ValidatedAnalysis = z.infer<typeof validatedAnalysisSchema>;
+export type TranscriptSegment = z.infer<typeof transcriptSegmentSchema>;
 
 /** Throws if `a` breaks any invariant above (including ordering and duration bounds). */
 export function assertValidatedAnalysis(a: unknown, duration_ms: number): ValidatedAnalysis {
@@ -108,6 +135,12 @@ export function assertValidatedAnalysis(a: unknown, duration_ms: number): Valida
     const first = line.mentions[0].visible_start_ms;
     if (first < prevFirst) throw new Error("lines not sorted by first mention");
     prevFirst = first;
+  }
+  let prevEnd = 0;
+  for (const t of v.transcript) {
+    if (t.end_ms > duration_ms) throw new Error("transcript segment past end of video");
+    if (t.start_ms < prevEnd) throw new Error("transcript segments overlap or are not sorted");
+    prevEnd = t.end_ms;
   }
   return v;
 }

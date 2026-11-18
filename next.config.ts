@@ -7,6 +7,8 @@ try {
 } catch {}
 // Quick tunnels change URL every run; allow them by wildcard too.
 devOrigins.push("*.trycloudflare.com", "*.ngrok-free.app", "*.ngrok.app");
+// Phone on the same Wi-Fi (npm run dev:lan). Change this if the Mac's address changes.
+devOrigins.push("192.168.1.158");
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: devOrigins,

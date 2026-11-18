@@ -2,6 +2,7 @@
  * Builders for GET /api/inspections and GET /api/inspections/[id].
  * Server-only. Shapes are defined in lib/types/api.ts.
  */
+import { publicBaseUrl } from "../baseUrl";
 import { sql } from "../db";
 import { env } from "../env";
 import { mediaUrl } from "../media";
@@ -17,6 +18,7 @@ import type {
   ClipRow,
   FrameRow,
   InspectionRow,
+  TranscriptSegmentRow,
   LineItemRow,
   MentionRow,
   ReportVersionRow,
@@ -68,6 +70,9 @@ export async function listInspections(): Promise<InspectionListItem[]> {
       select * from report_versions v where v.inspection_id = i.id
       order by v.version_number desc limit 1
     ) rv on true
+    -- A recording with no video yet isn't a draft worth listing (the tech backed out).
+    where not (i.status = 'recording'
+      and not exists (select 1 from video_segments s where s.inspection_id = i.id))
     order by i.created_at desc
     limit 200
   `;
@@ -92,7 +97,7 @@ export async function getInspectionDetail(id: string): Promise<InspectionDetail 
   const [insp] = await sql<InspectionRow[]>`select * from inspections where id = ${id}`;
   if (!insp) return null;
 
-  const [segments, lines, suggestions, mentions, clips, frames, [latest], [techEdit]] = await Promise.all([
+  const [segments, lines, suggestions, mentions, clips, frames, [latest], [techEdit], transcript] = await Promise.all([
     sql<VideoSegmentRow[]>`select * from video_segments where inspection_id = ${id} order by segment_number`,
     sql<LineItemRow[]>`select * from line_items where inspection_id = ${id} order by position`,
     sql<AiSuggestionRow[]>`
@@ -110,6 +115,8 @@ export async function getInspectionDetail(id: string): Promise<InspectionDetail 
       order by version_number desc limit 1`,
     sql<{ at: string | null }[]>`
       select max(created_at) as at from edits where inspection_id = ${id} and actor = 'tech'`,
+    sql<Pick<TranscriptSegmentRow, "start_ms" | "end_ms" | "text">[]>`
+      select start_ms, end_ms, text from transcript_segments where inspection_id = ${id} order by start_ms`,
   ]);
 
   const framesByClip = new Map<string, FrameRow[]>();
@@ -173,10 +180,11 @@ export async function getInspectionDetail(id: string): Promise<InspectionDetail 
       .map((s) => s.offset_ms)
       .filter((v): v is number => v !== null),
     lines: lineDetails,
+    transcript,
     progress,
     sending: {
       latest_version: latest ? { version_number: latest.version_number, sent_at: latest.sent_at } : null,
-      share_url: insp.share_token ? `${env().PUBLIC_BASE_URL}/r/${insp.share_token}` : null,
+      share_url: insp.share_token ? `${await publicBaseUrl()}/r/${insp.share_token}` : null,
       unsent_changes: unsentChanges(insp, latest ?? null, techEdit?.at ?? null),
     },
     flags: { enable_reprocess: env().ENABLE_REPROCESS },
