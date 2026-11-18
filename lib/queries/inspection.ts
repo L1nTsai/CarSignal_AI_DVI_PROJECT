@@ -2,6 +2,7 @@
  * Builders for GET /api/inspections and GET /api/inspections/[id].
  * Server-only. Shapes are defined in lib/types/api.ts.
  */
+import { publicBaseUrl } from "../baseUrl";
 import { sql } from "../db";
 import { env } from "../env";
 import { mediaUrl } from "../media";
@@ -183,7 +184,7 @@ export async function getInspectionDetail(id: string): Promise<InspectionDetail 
     progress,
     sending: {
       latest_version: latest ? { version_number: latest.version_number, sent_at: latest.sent_at } : null,
-      share_url: insp.share_token ? `${env().PUBLIC_BASE_URL}/r/${insp.share_token}` : null,
+      share_url: insp.share_token ? `${await publicBaseUrl()}/r/${insp.share_token}` : null,
       unsent_changes: unsentChanges(insp, latest ?? null, techEdit?.at ?? null),
     },
     flags: { enable_reprocess: env().ENABLE_REPROCESS },

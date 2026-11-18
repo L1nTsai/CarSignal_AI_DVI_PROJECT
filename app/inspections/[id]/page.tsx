@@ -6,7 +6,7 @@ import { notFound, redirect } from "next/navigation";
 import { InspectionScreen } from "@/components/editor/InspectionScreen";
 import { sql } from "@/lib/db";
 import { getDevice } from "@/lib/device";
-import { env } from "@/lib/env";
+import { publicBaseUrl } from "@/lib/baseUrl";
 import { isUuid } from "@/lib/http";
 
 export default async function InspectionPage({ params }: PageProps<"/inspections/[id]">) {
@@ -16,6 +16,6 @@ export default async function InspectionPage({ params }: PageProps<"/inspections
   // straight back to the camera instead of showing a QR code for itself.
   const [row] = await sql<{ status: string }[]>`select status from inspections where id = ${id}`;
   if (row?.status === "recording" && (await getDevice()) === "mobile") redirect(`/inspections/${id}/record`);
-  // PUBLIC_BASE_URL is server-only; the pairing QR code needs it on the client.
-  return <InspectionScreen id={id} publicBaseUrl={env().PUBLIC_BASE_URL} />;
+  // The address is worked out on the server; the pairing QR code needs it on the client.
+  return <InspectionScreen id={id} publicBaseUrl={await publicBaseUrl()} />;
 }

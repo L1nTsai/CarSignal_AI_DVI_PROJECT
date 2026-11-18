@@ -1086,6 +1086,8 @@ ENABLE_REPROCESS=true    # development only; set to false for the demo
 
 Quick tunnel URLs change on every run. Use a named Cloudflare tunnel if you want a stable URL.
 
+When `PUBLIC_BASE_URL` is a localhost address, the server builds customer links and the pairing QR code from the address the request came in on (`lib/baseUrl.ts`: `x-forwarded-host`, else `Host`), so opening the app through the tunnel is enough. A real `PUBLIC_BASE_URL` always wins.
+
 ---
 
 ## 13. Build order (drafted)

@@ -28,6 +28,8 @@ npm run tunnel                 # cloudflared quick tunnel -> prints https://<ran
 ```
 
 Put the tunnel URL in `PUBLIC_BASE_URL` in `.env.local`, then restart `npm run dev:all`.
+If you forget (or the quick tunnel's URL changed), customer links and the pairing QR code use the address you opened the
+app from, as long as `PUBLIC_BASE_URL` is a `localhost` address. A real `PUBLIC_BASE_URL` always wins.
 `*.trycloudflare.com` is already allowed in `allowedDevOrigins`.
 Open that URL on both the laptop and the phone. Don't use `localhost`, or the QR codes and share links will point to it.
 The phone camera needs the HTTPS tunnel.

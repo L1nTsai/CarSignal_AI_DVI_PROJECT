@@ -12,7 +12,8 @@ change their shapes without coordinating. The full spec is `docs/PLAN.md`.
   (the one grounding check, used by the editor and logged by the worker), `lib/editor/schemas.ts`,
   `lib/sharing/*`, `lib/annotations.ts` (clip drawings: schema, clip-time conversion, geometry), `lib/carZones.ts` (car diagram zones,
   `guessZone`, `zoneSummary`). `lib/recording.ts` (recorder constants and the pure checks: `videoCutAt`, `recorderStalled`).
-  **Server-only** (uses ffprobe): `lib/segmentCheck.ts`.
+  **Server-only**: `lib/segmentCheck.ts` (ffprobe) and `lib/baseUrl.ts` (`publicBaseUrl()`: the address for customer links and
+  the pairing QR; `PUBLIC_BASE_URL` unless that's localhost, then the request's own address). Build links with it, not with `env().PUBLIC_BASE_URL`.
 - Live updates use **SWR polling** (`lib/fetcher.ts`), about every 2 s while something is in progress.
 - No `alert`/`confirm`. Confirmations happen in the page.
 - UI: shadcn/ui primitives live in `components/ui` (add more with `npx shadcn@latest add <name>`);

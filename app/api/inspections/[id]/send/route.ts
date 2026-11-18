@@ -7,7 +7,7 @@
  */
 import { NextResponse, type NextRequest } from "next/server";
 import { isRaisedException, sql } from "@/lib/db";
-import { env } from "@/lib/env";
+import { publicBaseUrl } from "@/lib/baseUrl";
 import { isUuid, jsonError } from "@/lib/http";
 import type { SendResponse } from "@/lib/sharing/types";
 
@@ -34,7 +34,7 @@ export async function POST(_req: NextRequest, ctx: RouteContext<"/api/inspection
   }
 
   return NextResponse.json<SendResponse>({
-    shareUrl: `${env().PUBLIC_BASE_URL}/r/${result.token}`,
+    shareUrl: `${await publicBaseUrl()}/r/${result.token}`,
     version_number: result.version_number,
   });
 }
