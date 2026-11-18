@@ -378,3 +378,73 @@ describe("log_edit", () => {
       expect(counts).toEqual({ versions: 0, lines: 0, clips: 0, edits: 0 });
     }));
 });
+
+// ── Clip annotations (migration 0005) ────────────────────────────────────────
+
+describe("clip annotations", () => {
+  const drawing = { id: "a1", start_ms: 1000, end_ms: 4000, strokes: [{ color: "red", points: [[0.1, 0.2]] }] };
+
+  it("an annotations change is a tech edit, so a sent report has unsent changes", () =>
+    inTx(async (tx) => {
+      const s = await sendable(tx);
+      await send(tx, s.id);
+      await actor(tx, "tech");
+      await tx`update clips set annotations = ${tx.json([drawing])} where id = ${s.clipId}`;
+      const [edit] = await tx<{ actor: string; clip_id: string; after: { annotations: unknown } }[]>`
+        select actor, clip_id, after from edits where clip_id = ${s.clipId} and action = 'updated'
+        order by id desc limit 1`;
+      expect(edit.actor).toBe("tech");
+      expect(edit.after.annotations).toEqual([drawing]);
+    }));
+
+  it("send_report freezes the range and annotations with the clip", () =>
+    inTx(async (tx) => {
+      const s = await sendable(tx);
+      await tx`update clips set annotations = ${tx.json([drawing])} where id = ${s.clipId}`;
+      await send(tx, s.id);
+      // A later edit doesn't touch the frozen copy.
+      await tx`update clips set annotations = '[]' where id = ${s.clipId}`;
+      const [frozen] = await tx<{ clip_start_ms: number; clip_end_ms: number; annotations: unknown }[]>`
+        select c.clip_start_ms, c.clip_end_ms, c.annotations
+        from report_version_clips c
+        join report_version_lines l on l.id = c.report_version_line_id
+        where l.source_line_id = ${s.lineId}`;
+      expect(frozen).toEqual({ clip_start_ms: 0, clip_end_ms: 5000, annotations: [drawing] });
+    }));
+
+  it("rejects annotations that aren't an array, or are too large", () =>
+    inTx(async (tx) => {
+      const s = await sendable(tx);
+      await rejects(tx, (sp) => sp`update clips set annotations = '{}' where id = ${s.clipId}`, /clips_annotations_is_array/);
+      const huge = [{ ...drawing, strokes: [{ color: "red", points: Array.from({ length: 60_000 }, (_, i) => [i / 60_000, Math.random()]) }] }];
+      await rejects(tx, (sp) => sp`update clips set annotations = ${sp.json(huge)} where id = ${s.clipId}`, /clips_annotations_size/);
+    }));
+});
+
+// ── Car zones (migration 0006) ───────────────────────────────────────────────
+
+describe("car zones", () => {
+  it("accept every key in lib/carZones.ts and reject anything else", () =>
+    inTx(async (tx) => {
+      const { CAR_ZONE_KEYS } = await import("@/lib/carZones");
+      const s = await sendable(tx);
+      for (const z of CAR_ZONE_KEYS) await tx`update line_items set car_zone = ${z} where id = ${s.lineId}`;
+      await rejects(tx, (sp) => sp`update line_items set car_zone = 'roof' where id = ${s.lineId}`, /line_items_car_zone_check/);
+    }));
+
+  it("a zone change is a tech edit, and send_report freezes the zone", () =>
+    inTx(async (tx) => {
+      const s = await sendable(tx);
+      await actor(tx, "tech");
+      await tx`update line_items set car_zone = 'wheel_lf' where id = ${s.lineId}`;
+      const [edit] = await tx<{ actor: string; after: { car_zone: string } }[]>`
+        select actor, after from edits where line_item_id = ${s.lineId} and clip_id is null and action = 'updated'
+        order by id desc limit 1`;
+      expect(edit).toMatchObject({ actor: "tech", after: { car_zone: "wheel_lf" } });
+      await send(tx, s.id);
+      await tx`update line_items set car_zone = null where id = ${s.lineId}`;
+      const [frozen] = await tx<{ car_zone: string | null }[]>`
+        select car_zone from report_version_lines where source_line_id = ${s.lineId}`;
+      expect(frozen.car_zone).toBe("wheel_lf");
+    }));
+});

@@ -93,6 +93,7 @@ const stubAnalyze: AnalyzeFn = async ({ duration_ms, segment_starts_ms }) => {
     const ve = Math.min(ends[i], vs + Math.min(3000, Math.floor(len / 2)));
     return {
       component_name: `Part ${i + 1} Component`,
+      car_zone: null,
       rating: (["good", "monitor", "needs_attention"] as const)[i % 3],
       rating_basis: "stated",
       note: `Synthetic note for part ${i + 1}.`,
@@ -103,6 +104,12 @@ const stubAnalyze: AnalyzeFn = async ({ duration_ms, segment_starts_ms }) => {
     const m = l.mentions[0];
     m.best_frame_ms = Math.min(m.visible_end_ms, Math.max(m.visible_start_ms, m.best_frame_ms));
   }
+  // One caption per part (before the extra mentions below), so they don't overlap.
+  const transcript = lines.map((l) => ({
+    text: l.mentions[0].quote,
+    start_ms: l.mentions[0].visible_start_ms,
+    end_ms: l.mentions[0].visible_end_ms,
+  }));
   if (segment_starts_ms.length > 1) {
     // Line 1 mentioned again at the end of the video.
     const ve = duration_ms - 200;
@@ -111,6 +118,7 @@ const stubAnalyze: AnalyzeFn = async ({ duration_ms, segment_starts_ms }) => {
     const p = segment_starts_ms[1];
     lines.push({
       component_name: "Straddling Component",
+      car_zone: "underbody",
       rating: "monitor",
       rating_basis: "inferred",
       note: "Straddles a pause point.",
@@ -118,7 +126,7 @@ const stubAnalyze: AnalyzeFn = async ({ duration_ms, segment_starts_ms }) => {
     });
     lines.sort((a, b) => a.mentions[0].visible_start_ms - b.mentions[0].visible_start_ms);
   }
-  return { model: "e2e-stub", lines, dropped: [] };
+  return { model: "e2e-stub", lines, transcript, dropped: [] };
 };
 
 // ── job driving (claims only this inspection's jobs) ─────────────────────────

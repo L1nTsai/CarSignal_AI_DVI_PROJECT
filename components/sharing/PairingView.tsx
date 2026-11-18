@@ -6,9 +6,14 @@
  *
  * "Pairing" is just both devices opening the same inspection; nothing is stored.
  */
-import { ButtonLink, Card, EmptyState, Section } from "@/components/ui";
+import { EmptyState, Section } from "@/components/app";
+import Link from "next/link";
+import { Smartphone, TriangleAlert, Video } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import type { InspectionDetail, SegmentDetail } from "@/lib/types/api";
-import { QrCode } from "./QrCode";
+import { QrCode } from "@/components/shared/QrCode";
 
 export function PairingView({ detail, publicBaseUrl }: { detail: InspectionDetail; publicBaseUrl: string }) {
   const id = detail.inspection.id;
@@ -19,33 +24,42 @@ export function PairingView({ detail, publicBaseUrl }: { detail: InspectionDetai
 
   return (
     <div className="flex flex-col gap-8">
-      <Card className="flex flex-col items-center gap-5 p-6 text-center sm:flex-row sm:items-start sm:text-left">
-        <QrCode value={recordUrl} size={208} className="shrink-0" />
+      <Card className="flex flex-col items-center gap-6 p-6 text-center sm:flex-row sm:items-start sm:text-left">
+        <QrCode value={recordUrl} size={208} className="shrink-0 rounded-xl" />
         <div className="flex flex-col gap-3">
-          <h2 className="text-lg font-semibold">Record on your phone</h2>
-          <ol className="flex list-decimal flex-col gap-1 pl-5 text-left text-sm text-muted">
+          <h2 className="flex items-center justify-center gap-2 text-lg font-semibold sm:justify-start">
+            <Smartphone className="size-5 text-muted-foreground" />
+            Record on your phone
+          </h2>
+          <ol className="flex list-decimal flex-col gap-1 pl-5 text-left text-sm text-muted-foreground">
             <li>Scan this code with the phone&apos;s camera.</li>
             <li>Record the walkaround. Each part shows up here once it&apos;s uploaded.</li>
             <li>Tap Finish on the phone when you&apos;re done.</li>
           </ol>
-          <p className="font-mono text-xs break-all text-subtle">{recordUrl}</p>
+          <p className="font-mono text-xs break-all text-muted-foreground">{recordUrl}</p>
           {isLocalhost ? (
-            <p className="rounded-md border border-amber-border bg-amber-bg px-3 py-2 text-sm text-amber-fg">
-              This code points to localhost, which a phone can&apos;t open. Set PUBLIC_BASE_URL to your tunnel URL
-              and restart.
-            </p>
+            <Alert className="border-amber-border bg-amber-bg text-left text-amber-fg">
+              <TriangleAlert />
+              <AlertDescription className="text-amber-fg">
+                This code points to localhost, which a phone can&apos;t open. Set PUBLIC_BASE_URL to your tunnel URL
+                and restart.
+              </AlertDescription>
+            </Alert>
           ) : null}
           <div>
-            <ButtonLink href={recordPath} variant="secondary">
-              Record on this device
-            </ButtonLink>
+            <Button asChild variant="outline">
+              <Link href={recordPath}>
+                <Video />
+                Record on this device
+              </Link>
+            </Button>
           </div>
         </div>
       </Card>
 
       <Section title={parts.length ? `Uploaded parts (${parts.length})` : "Uploaded parts"}>
         {parts.length === 0 ? (
-          <EmptyState title="Nothing recorded yet">Parts appear here as the phone uploads them.</EmptyState>
+          <EmptyState title="Nothing recorded yet" icon={<Video />}>Parts appear here as the phone uploads them.</EmptyState>
         ) : (
           <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {parts.map((s) => (
@@ -62,11 +76,11 @@ export function PairingView({ detail, publicBaseUrl }: { detail: InspectionDetai
 
 function PartTile({ part }: { part: SegmentDetail }) {
   return (
-    <Card className="overflow-hidden">
+    <Card className="gap-0 py-0">
       {part.status === "uploaded" ? (
         <video src={part.url} controls playsInline preload="metadata" className="block aspect-video w-full" />
       ) : (
-        <div className="flex aspect-video items-center justify-center bg-surface text-sm text-muted">
+        <div className="flex aspect-video items-center justify-center bg-muted text-sm text-muted-foreground">
           {part.status === "uploading" ? "Uploading…" : "Upload failed"}
         </div>
       )}

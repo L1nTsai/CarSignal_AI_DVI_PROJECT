@@ -11,7 +11,7 @@
  *   failed            with a failure_reason (Retry view)
  *   ready_for_review  5 AI lines, 6 clips; VIN missing (Send disabled);
  *                     one note has an unsupported number (grounding warning)
- *   sent              sent twice (v1, v2: one line updated, one removed, one
+ *   sent              sent twice (v1, v2: one line updated and given a drawing, one removed, one
  *                     tech line added), plus an unsent tech edit after v2
  *
  * Each run adds new inspections. `npm run db:reset` clears everything
@@ -22,6 +22,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import type { CarZone } from "@/lib/carZones";
 import { db, sql, withActor, type Tx } from "@/lib/db";
 import { env } from "@/lib/env";
 import { storagePaths } from "@/lib/paths";
@@ -44,6 +45,8 @@ interface DemoLine {
   rating: LineRating;
   basis: RatingBasis;
   note: string;
+  /** Where on the car (lib/carZones.ts); null = no single spot. */
+  zone: CarZone | null;
   mentions: DemoMention[];
 }
 
@@ -51,6 +54,7 @@ interface DemoLine {
 const LINES: DemoLine[] = [
   {
     name: "Left Front Tire",
+    zone: "wheel_lf",
     rating: "needs_attention",
     basis: "stated",
     note: "The inner edge of the tire is worn.",
@@ -61,6 +65,7 @@ const LINES: DemoLine[] = [
   },
   {
     name: "Wipers",
+    zone: "windshield",
     rating: "good",
     basis: "inferred",
     note: "The wipers look good.",
@@ -68,6 +73,7 @@ const LINES: DemoLine[] = [
   },
   {
     name: "Front Brake Pads",
+    zone: null,
     rating: "monitor",
     basis: "stated",
     note: "The front brake pads are at about 4 millimeters.",
@@ -77,6 +83,7 @@ const LINES: DemoLine[] = [
   },
   {
     name: "Engine Air Filter",
+    zone: "hood_engine",
     rating: "good",
     basis: "stated",
     // Deliberate grounding problem: "12,000 miles" was never said.
@@ -85,6 +92,7 @@ const LINES: DemoLine[] = [
   },
   {
     name: "Right Headlight",
+    zone: "headlight_r",
     rating: "monitor",
     basis: "inferred",
     note: "The right headlight lens is a little cloudy.",
@@ -226,12 +234,12 @@ async function insertAiLines(tx: Tx, id: string, m: Media, opts: { readyClips: n
   const lineIds: Record<string, string> = {};
   for (const [li, line] of LINES.entries()) {
     const [row] = await tx<{ id: string }[]>`
-      insert into line_items (inspection_id, position, component_name, note, rating)
-      values (${id}, ${li + 1}, ${line.name}, ${line.note}, ${line.rating}) returning id`;
+      insert into line_items (inspection_id, position, component_name, note, rating, car_zone)
+      values (${id}, ${li + 1}, ${line.name}, ${line.note}, ${line.rating}, ${line.zone}) returning id`;
     lineIds[line.name] = row.id;
     await tx`
-      insert into ai_suggestions (line_item_id, component_name, note, rating, rating_basis, model)
-      values (${row.id}, ${line.name}, ${line.note}, ${line.rating}, ${line.basis}, ${MODEL})`;
+      insert into ai_suggestions (line_item_id, component_name, note, rating, rating_basis, model, car_zone)
+      values (${row.id}, ${line.name}, ${line.note}, ${line.rating}, ${line.basis}, ${MODEL}, ${line.zone})`;
     for (const [mi, mention] of line.mentions.entries()) {
       const [mrow] = await tx<{ id: string }[]>`
         insert into mentions (line_item_id, visible_start_ms, visible_end_ms, best_frame_ms, quote)
@@ -335,12 +343,24 @@ async function main() {
       const ids = await tx<{ id: string }[]>`select id from line_items where inspection_id = ${sentId} order by position`;
       await tx`select reorder_lines(${sentId}, ${ids.map((r) => r.id)}::uuid[])`;
       const [line] = await tx<{ id: string }[]>`
-        insert into line_items (inspection_id, position, component_name, note, rating)
-        values (${sentId}, ${ids.length + 1}, 'Cabin Air Filter', 'The cabin air filter is dirty.', 'needs_attention')
+        insert into line_items (inspection_id, position, component_name, note, rating, car_zone)
+        values (${sentId}, ${ids.length + 1}, 'Cabin Air Filter', 'The cabin air filter is dirty.', 'needs_attention', 'cabin')
         returning id`;
       await insertClip(tx, media, {
         inspectionId: sentId, lineId: line.id, mentionId: null, position: 1, start: 29000, end: 34000, best: null, ready: true,
       });
+      // A drawing on the brake pads' main clip (a ring around the middle, 1 s in, for 3 s).
+      const ring = Array.from({ length: 33 }, (_, i) => {
+        const t = (i / 32) * 2 * Math.PI;
+        return [Math.round((0.5 + 0.12 * Math.cos(t)) * 1e4) / 1e4, Math.round((0.5 + 0.2 * Math.sin(t)) * 1e4) / 1e4];
+      });
+      await tx`
+        update clips c set annotations = jsonb_build_array(jsonb_build_object(
+          'id', 'seed1', 'start_ms', c.start_ms + 1000, 'end_ms', c.start_ms + 4000,
+          'strokes', jsonb_build_array(jsonb_build_object('color', 'red', 'points', ${tx.json(ring)}::jsonb))))
+        from line_items li
+        where li.id = c.line_item_id and li.inspection_id = ${sentId}
+          and li.component_name = 'Front Brake Pads' and c.position = 1`;
     });
     await sql`select send_report(${sentId})`;
     log("sent v2");

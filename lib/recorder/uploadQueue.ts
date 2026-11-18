@@ -28,6 +28,8 @@ export interface Piece {
   /** Present for pieces recorded in this visit. */
   blob: Blob | null;
   mimeType: string;
+  /** Server check: where the picture stopped while the sound kept going; null = fine or unchecked. */
+  videoCutAtMs: number | null;
 }
 
 export class TransportError extends Error {
@@ -47,8 +49,19 @@ export class AbortedError extends Error {
   }
 }
 
+/** What the server reports about a stored piece. */
+export interface UploadResult {
+  videoCutAtMs: number | null;
+}
+
 export interface Transport {
-  upload(n: number, blob: Blob, mimeType: string, onProgress: (p: number) => void, signal: AbortSignal): Promise<void>;
+  upload(
+    n: number,
+    blob: Blob,
+    mimeType: string,
+    onProgress: (p: number) => void,
+    signal: AbortSignal,
+  ): Promise<UploadResult | void>;
   /** Must treat "already gone" (404) as success. */
   remove(n: number): Promise<void>;
 }
@@ -117,11 +130,18 @@ export class UploadQueue {
 
   // ── Commands ──────────────────────────────────────────────────────────────
   /** Pieces already on the server from an earlier visit (must be called before add()). */
-  seed(pieces: { n: number; durationMs: number | null; mimeType: string }[]) {
+  seed(pieces: { n: number; durationMs: number | null; mimeType: string; videoCutAtMs?: number | null }[]) {
     this.pieces = pieces
       .slice()
       .sort((a, b) => a.n - b.n)
-      .map((p) => ({ ...p, state: "uploaded" as const, progress: 1, error: null, blob: null }));
+      .map((p) => ({
+        ...p,
+        videoCutAtMs: p.videoCutAtMs ?? null,
+        state: "uploaded" as const,
+        progress: 1,
+        error: null,
+        blob: null,
+      }));
     this.emit();
   }
 
@@ -141,7 +161,7 @@ export class UploadQueue {
 
   add(blob: Blob, mimeType: string, durationMs: number): number {
     const n = this.nextNumber;
-    this.pieces.push({ n, state: "queued", durationMs, progress: 0, error: null, blob, mimeType });
+    this.pieces.push({ n, state: "queued", durationMs, progress: 0, error: null, blob, mimeType, videoCutAtMs: null });
     this.emit();
     void this.pump();
     return n;
@@ -245,7 +265,7 @@ export class UploadQueue {
       piece.error = null;
       this.emit();
       try {
-        await this.transport.upload(
+        const result = await this.transport.upload(
           piece.n,
           piece.blob,
           piece.mimeType,
@@ -257,6 +277,7 @@ export class UploadQueue {
         );
         piece.state = "uploaded";
         piece.progress = 1;
+        piece.videoCutAtMs = result?.videoCutAtMs ?? null;
         return;
       } catch (err) {
         if (err instanceof AbortedError || abort.signal.aborted) return; // retaken; pump moves on

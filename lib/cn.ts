@@ -1,4 +1,2 @@
-/** Join class names, skipping falsy values. */
-export function cn(...parts: (string | false | null | undefined)[]): string {
-  return parts.filter(Boolean).join(" ");
-}
+/** Merge Tailwind class names (clsx + tailwind-merge). Same as `@/lib/utils`. */
+export { cn } from "cn";

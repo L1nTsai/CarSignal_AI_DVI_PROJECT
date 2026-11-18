@@ -3,6 +3,8 @@
  * Server-only. Shape is defined in lib/types/api.ts (ShareResponse).
  */
 import { createHash } from "node:crypto";
+import { toClipTime } from "../annotations";
+import { guessZone } from "../carZones";
 import { sql } from "../db";
 import { shareMediaUrl } from "../media";
 import type { ShareResponse, ShareVersion } from "../types/api";
@@ -43,10 +45,12 @@ async function loadVersion(token: string, v: ReportVersionRow): Promise<ShareVer
       component_name: l.component_name,
       note: l.note,
       rating: l.rating,
+      car_zone: l.car_zone ?? guessZone(l.component_name),
       clips: (clipsByLine.get(l.id) ?? []).map((c) => ({
         position: c.position,
         clip_url: shareMediaUrl(token, c.id, "clip"),
         thumbnail_url: shareMediaUrl(token, c.id, "thumbnail"),
+        annotations: toClipTime(c.annotations, c.clip_start_ms, c.clip_end_ms),
       })),
     })),
   };

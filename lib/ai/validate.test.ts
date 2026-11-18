@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { assertValidatedAnalysis, type ValidatedAnalysis } from "./types";
-import { parseModelJson, repairAnalysis, repairSpan, type RepairResult } from "./validate";
+import { normalizeZone, parseModelJson, repairAnalysis, repairSpan, repairTranscript, type RepairResult } from "./validate";
 
 const fixture = (name: string): unknown =>
   JSON.parse(readFileSync(path.join(__dirname, "__fixtures__", name), "utf8"));
@@ -147,5 +147,77 @@ describe("parseModelJson", () => {
   });
   it("returns undefined for non-JSON", () => {
     expect(parseModelJson("Sorry, I can't")).toBeUndefined();
+  });
+});
+
+describe("repairTranscript", () => {
+  it("converts to ms, trims text, sorts, and drops unusable segments", () => {
+    const t = repairTranscript(
+      [
+        { text: " Wipers,  these look good. ", start_s: 5, end_s: 6.5 },
+        { text: "Left front tire.", start_s: 1, end_s: 2.25 },
+        { text: "   ", start_s: 3, end_s: 4 },
+        { text: "no times" },
+        { text: "Bad", start_s: "x", end_s: 2 },
+      ],
+      10_000,
+    );
+    expect(t).toEqual([
+      { text: "Left front tire.", start_ms: 1000, end_ms: 2250 },
+      { text: "Wipers, these look good.", start_ms: 5000, end_ms: 6500 },
+    ]);
+  });
+  it("clamps to the video, fixes zero-length spans and trims overlaps", () => {
+    const t = repairTranscript(
+      [
+        { text: "a", start_s: 1, end_s: 3 },
+        { text: "b", start_s: 2, end_s: 2 },
+        { text: "c", start_s: 9.5, end_s: 12 },
+      ],
+      10_000,
+    );
+    expect(t).toEqual([
+      { text: "a", start_ms: 1000, end_ms: 2000 },
+      { text: "b", start_ms: 2000, end_ms: 3000 },
+      { text: "c", start_ms: 9500, end_ms: 10_000 },
+    ]);
+  });
+  it("is empty when the response has no transcript, and the lines still come through", () => {
+    const r = repairAnalysis(fixture("brief-tire-wipers.json"), { duration_ms: 30_000, model: "m" });
+    const a = expectOk(r, 30_000);
+    expect(Array.isArray(a.transcript)).toBe(true);
+  });
+  it("passes the worker-side contract check", () => {
+    const raw = {
+      transcript: [
+        { text: "Left front tire. The inner edge is worn.", start_s: 1.2, end_s: 4 },
+        { text: "Wipers look good.", start_s: 3.5, end_s: 6 },
+      ],
+      lines: [
+        {
+          component_name: "Left Front Tire",
+          rating: "needs_attention",
+          rating_basis: "stated",
+          note: "Worn.",
+          mentions: [{ quote: "The inner edge is worn.", visible_start_s: 1, visible_end_s: 4, best_frame_s: 2 }],
+        },
+      ],
+    };
+    const a = expectOk(repairAnalysis(raw, { duration_ms: 10_000, model: "m" }), 10_000);
+    expect(a.transcript.map((t) => [t.start_ms, t.end_ms])).toEqual([
+      [1200, 3500],
+      [3500, 6000],
+    ]);
+  });
+});
+
+describe("normalizeZone", () => {
+  it("keeps known zones (case/space-insensitive) and maps none/unknown/missing to null", () => {
+    expect(normalizeZone("wheel_lf")).toBe("wheel_lf");
+    expect(normalizeZone(" Wheel LF ")).toBe("wheel_lf");
+    expect(normalizeZone("none")).toBeNull();
+    expect(normalizeZone("roof")).toBeNull();
+    expect(normalizeZone(undefined)).toBeNull();
+    expect(normalizeZone(3)).toBeNull();
   });
 });

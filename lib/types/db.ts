@@ -1,5 +1,5 @@
 /**
- * Row types — one per table in supabase/migrations/0001_init.sql.
+ * Row types — one per table in supabase/migrations (0001_init.sql and later).
  * Column names are kept exactly (snake_case). Pure types; safe anywhere.
  *
  * Conventions (enforced by lib/db.ts):
@@ -8,6 +8,9 @@
  * - smallint / integer -> number
  * - jsonb -> parsed JSON
  */
+
+import type { Annotation } from "../annotations";
+import type { CarZone } from "../carZones";
 
 // ── Enums ────────────────────────────────────────────────────────────────────
 export type InspectionStatus = "recording" | "processing" | "ready_for_review" | "sent" | "failed";
@@ -38,6 +41,8 @@ export interface InspectionRow {
   video_path: string | null;
   duration_ms: number | null;
   share_token: string | null;
+  /** When the AI step last saved the transcript; null for inspections processed before transcripts existed. */
+  transcribed_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -51,6 +56,8 @@ export interface VideoSegmentRow {
   mime_type: string;
   duration_ms: number | null;
   offset_ms: number | null;
+  /** Where the picture stopped while the sound kept going (migration 0007); null = fine or unchecked. */
+  video_cut_at_ms: number | null;
   created_at: string;
 }
 
@@ -61,6 +68,8 @@ export interface LineItemRow {
   component_name: string;
   note: string;
   rating: LineRating;
+  /** Where on the car (0006, lib/carZones.ts); null = not on the car. */
+  car_zone: CarZone | null;
   created_at: string;
   updated_at: string;
 }
@@ -72,6 +81,17 @@ export interface AiSuggestionRow {
   rating: LineRating;
   rating_basis: RatingBasis;
   model: string;
+  /** The AI's zone as given (null = "none"). */
+  car_zone: CarZone | null;
+  created_at: string;
+}
+
+export interface TranscriptSegmentRow {
+  id: string;
+  inspection_id: string;
+  start_ms: number;
+  end_ms: number;
+  text: string;
   created_at: string;
 }
 
@@ -97,6 +117,8 @@ export interface ClipRow {
   path: string | null;
   cut_count: number;
   thumbnail_frame_id: string | null;
+  /** Drawings on the clip, stitched timeline (0005, lib/annotations.ts). */
+  annotations: Annotation[];
   created_at: string;
   updated_at: string;
 }
@@ -131,6 +153,8 @@ export interface ReportVersionLineRow {
   component_name: string;
   note: string;
   rating: LineRating;
+  /** Frozen copy; null for versions sent before 0006 (the share query guesses). */
+  car_zone: CarZone | null;
 }
 
 export interface ReportVersionClipRow {
@@ -139,6 +163,11 @@ export interface ReportVersionClipRow {
   position: number;
   clip_path: string;
   thumbnail_path: string;
+  /** The clip's range when sent; null for versions sent before 0005. */
+  clip_start_ms: number | null;
+  clip_end_ms: number | null;
+  /** Frozen copy of clips.annotations (stitched timeline). */
+  annotations: Annotation[];
 }
 
 export interface EditRow {

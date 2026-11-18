@@ -14,6 +14,7 @@
 import path from "node:path";
 import { unsupportedNumbers } from "@/lib/ai/grounding";
 import { assertValidatedAnalysis, type AnalyzeFn, type ValidatedAnalysis } from "@/lib/ai/types";
+import { guessZone } from "@/lib/carZones";
 import { computeClipRanges, type ClipRangeSettings, type RangeMention } from "@/lib/clips";
 import { sql, withActor } from "@/lib/db";
 import { env } from "@/lib/env";
@@ -155,18 +156,26 @@ export async function saveResults(
 
     await tx`delete from line_items where inspection_id = ${inspectionId}`;
 
+    await tx`delete from transcript_segments where inspection_id = ${inspectionId}`;
+    if (analysis.transcript.length) {
+      const rows = analysis.transcript.map((t) => ({ inspection_id: inspectionId, ...t }));
+      await tx`insert into transcript_segments ${tx(rows, "inspection_id", "start_ms", "end_ms", "text")}`;
+    }
+
     const clipIds: string[] = [];
     let k = 0;
     for (let li = 0; li < analysis.lines.length; li++) {
       const line = analysis.lines[li];
+      // The AI's zone; if it gave none, a keyword guess from the name (the tech can change either).
+      const zone = line.car_zone ?? guessZone(line.component_name);
       const [{ id: lineId }] = await tx<{ id: string }[]>`
-        insert into line_items (inspection_id, position, component_name, note, rating)
-        values (${inspectionId}, ${li + 1}, ${line.component_name.trim()}, ${line.note.trim()}, ${line.rating})
+        insert into line_items (inspection_id, position, component_name, note, rating, car_zone)
+        values (${inspectionId}, ${li + 1}, ${line.component_name.trim()}, ${line.note.trim()}, ${line.rating}, ${zone})
         returning id`;
       await tx`
-        insert into ai_suggestions (line_item_id, component_name, note, rating, rating_basis, model)
+        insert into ai_suggestions (line_item_id, component_name, note, rating, rating_basis, model, car_zone)
         values (${lineId}, ${line.component_name.trim()}, ${line.note.trim()}, ${line.rating},
-                ${line.rating_basis}, ${analysis.model})`;
+                ${line.rating_basis}, ${analysis.model}, ${line.car_zone})`;
       for (let mi = 0; mi < line.mentions.length; mi++, k++) {
         const m = line.mentions[mi];
         const [{ id: mentionId }] = await tx<{ id: string }[]>`
@@ -182,7 +191,8 @@ export async function saveResults(
       }
     }
 
-    await tx`update inspections set processing_step = 'cutting' where id = ${inspectionId}`;
+    // transcribed_at marks "transcript saved" even when it's empty (nothing was said).
+    await tx`update inspections set processing_step = 'cutting', transcribed_at = now() where id = ${inspectionId}`;
     const jobs = clipIds.map((clip_id) => ({ inspection_id: inspectionId, clip_id, kind: "cut_clip" }));
     await tx`insert into jobs ${tx(jobs, "inspection_id", "clip_id", "kind")}`;
     return clipIds.length;

@@ -16,6 +16,8 @@ import type {
   ProcessingStep,
   VideoSegmentRow,
 } from "./db";
+import type { ClipAnnotation } from "../annotations";
+import type { CarZone } from "../carZones";
 
 export interface ApiError {
   error: string;
@@ -65,6 +67,11 @@ export interface InspectionDetail {
   pause_points_ms: number[];
   /** Ordered by position. */
   lines: LineDetail[];
+  /**
+   * Everything the tech said, as timed captions (ordered by start_ms). Tech-only.
+   * Empty for inspections processed before transcripts existed (re-process to get one).
+   */
+  transcript: { start_ms: number; end_ms: number; text: string }[];
   progress: ProgressCounts;
   sending: SendingState;
   flags: { enable_reprocess: boolean };
@@ -157,6 +164,8 @@ export interface ShareLine {
   component_name: string;
   note: string;
   rating: LineRating;
+  /** Where on the car, for the diagram; null = not on the car. */
+  car_zone: CarZone | null;
   /** Ordered by position; clips[0] is the main clip and its thumbnail is the line photo. */
   clips: ShareClip[];
 }
@@ -165,4 +174,6 @@ export interface ShareClip {
   position: number;
   clip_url: string;
   thumbnail_url: string;
+  /** Drawings over the playing clip, in clip time (0 = clip start). No ids. */
+  annotations: ClipAnnotation[];
 }

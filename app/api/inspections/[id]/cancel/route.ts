@@ -1,7 +1,8 @@
 /**
  * POST /api/inspections/[id]/cancel — stop processing during converting or AI
- * review. The inspection becomes `failed` ("Processing was cancelled"). This is
- * final: the retry route refuses cancelled inspections; they can only be deleted.
+ * review. The inspection goes back to `recording` (a draft): the uploaded parts
+ * are kept, and the tech can add more or finish it again. It is not `failed`;
+ * that status is for real errors.
  *
  * Queued jobs are marked failed so the worker never claims them. A job that's
  * already running finishes its current step, then finds the inspection is no
@@ -13,7 +14,7 @@
 import type { NextRequest } from "next/server";
 import { sql } from "@/lib/db";
 import { handle, HttpError, ok, requireUuid } from "@/lib/editor/server";
-import { canCancelProcessing, CANCELLED_REASON } from "@/lib/processing";
+import { canCancelProcessing } from "@/lib/processing";
 
 export async function POST(_req: NextRequest, ctx: RouteContext<"/api/inspections/[id]/cancel">) {
   return handle(async () => {
@@ -31,12 +32,12 @@ export async function POST(_req: NextRequest, ctx: RouteContext<"/api/inspection
       }
       await tx`
         update inspections
-        set status = 'failed', processing_step = null, failure_reason = ${CANCELLED_REASON}
+        set status = 'recording', processing_step = null
         where id = ${id}`;
       await tx`
         update jobs set status = 'failed', last_error = 'cancelled by tech', run_after = now()
         where inspection_id = ${id} and status = 'queued'`;
     });
-    return ok({ status: "failed" });
+    return ok({ status: "recording" });
   });
 }

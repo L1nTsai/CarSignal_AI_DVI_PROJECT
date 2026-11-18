@@ -20,7 +20,7 @@ On macOS: `brew install supabase/tap/supabase ffmpeg cloudflared`
 ```bash
 npm install
 supabase start                 # local Postgres + Storage (ports 55321/55322, see below)
-supabase db reset              # applies the migration + seed (creates the storage bucket)
+supabase db reset              # applies the migrations + seed (creates the storage bucket)
 cp .env.example .env.local     # fill in SUPABASE_SERVICE_ROLE_KEY (from `supabase status`) and GEMINI_*
 npm run seed:demo              # optional: demo inspections in every status
 npm run dev:all                # Next.js on :3000 + the worker
@@ -45,18 +45,27 @@ The Supabase ports are moved to **55xxx** (API 55321, DB 55322, Studio 55323) in
 |---|---|
 | `dev` / `worker` / `dev:all` | Next.js, the job worker, or both |
 | `seed:demo` | Generates a test video and creates processed demo inspections |
-| `test` | vitest |
+| `test` | vitest (unit tests) |
+| `test:db` | Database tests against the local Supabase (each test rolls back) |
 | `typecheck` | `next typegen && tsc --noEmit` |
+| `ai:test` | Runs the Gemini prompt on a test video and prints the JSON |
 | `tunnel` | Quick Cloudflare tunnel to :3000 |
-| `db:reset` | Re-applies the migration + seed (wipes data) |
+| `db:reset` | Re-applies the migrations + seed (wipes data) |
 
 ## Layout
 
 ```
-app/          pages + route handlers (app/api/...)
-components/ui shared UI (Button, RatingBadge, StatusBadge, Card, Field, Page) — see /dev/ui
-lib/          db + storage clients, row/API types, query builders, media proxy, AI contract
-worker/       job loop + one handler per job kind
-scripts/      seed-demo
-supabase/     config.toml, migrations/, seed.sql
+app/                pages + route handlers (app/api/...)
+components/ui       shadcn/ui primitives (Button, Dialog, ...), see /dev/ui
+components/app      app pieces (Page, Field, StatusBadge, RatingBadge, ConfirmDialog)
+components/mobile   phone screens (recorder, report, details, home)
+components/desktop  laptop-only screens (the home list)
+components/editor   the inspection editor (studio, processing and failed views)
+components/sharing  customer report, send bar, laptop pairing view
+components/shared   pieces used by more than one screen (car diagram, drawings, editor form)
+lib/                db + storage clients, row/API types, query builders, media proxy, AI contract, recording checks
+worker/             job loop + one handler per job kind
+scripts/            seed-demo, ai-test
+supabase/           config.toml, migrations/, seed.sql
+tests/db/           database tests
 ```

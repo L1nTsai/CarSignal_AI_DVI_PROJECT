@@ -42,5 +42,9 @@ describe("responseSchema", () => {
     const rawMention = rawLine.shape.mentions.element;
     expect(Object.keys(mention.properties!).sort()).toEqual(Object.keys(rawMention.shape).sort());
     expect([...mention.required!].sort()).toEqual(Object.keys(rawMention.shape).sort());
+    const seg = responseSchema.properties!.transcript.items!;
+    const rawSeg = rawAnalysisSchema.shape.transcript.unwrap().element;
+    expect(Object.keys(seg.properties!).sort()).toEqual(Object.keys(rawSeg.shape).sort());
+    expect([...seg.required!].sort()).toEqual(Object.keys(rawSeg.shape).sort());
   });
 });

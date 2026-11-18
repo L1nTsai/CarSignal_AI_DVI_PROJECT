@@ -7,9 +7,12 @@
  * the whole inspection. Only a response with no usable `lines` array is an error.
  */
 import { z } from "zod";
+import { isCarZone, type CarZone } from "../carZones";
 import {
   rawAnalysisSchema,
+  rawTranscriptSegmentSchema,
   validatedAnalysisSchema,
+  type TranscriptSegment,
   type ValidatedAnalysis,
   type ValidatedLine,
   type ValidatedMention,
@@ -38,9 +41,46 @@ const rawLineSchema = rawAnalysisSchema.shape.lines.element;
 const rawMentionSchema = rawLineSchema.shape.mentions.element;
 // Parse mentions one by one so a single bad mention doesn't sink its line.
 const looseLineSchema = rawLineSchema.extend({ mentions: z.array(z.unknown()) });
-const looseTopSchema = z.object({ lines: z.array(z.unknown()) });
+const looseTopSchema = z.object({ lines: z.array(z.unknown()), transcript: z.array(z.unknown()).optional() });
+
+/**
+ * Lenient transcript repair: drop unusable segments, clamp to the video,
+ * sort, and trim overlaps (an earlier segment ends where the next begins).
+ * Exported for tests.
+ */
+export function repairTranscript(raw: unknown[] | undefined, duration_ms: number): TranscriptSegment[] {
+  const out: TranscriptSegment[] = [];
+  for (const r of raw ?? []) {
+    const p = rawTranscriptSegmentSchema.safeParse(r);
+    if (!p.success) continue;
+    const text = p.data.text.trim().replace(/\s+/g, " ");
+    if (text === "" || !Number.isFinite(p.data.start_s) || !Number.isFinite(p.data.end_s)) continue;
+    const start = clamp(Math.round(p.data.start_s * 1000), 0, duration_ms);
+    let end = clamp(Math.round(p.data.end_s * 1000), 0, duration_ms);
+    if (end <= start) end = Math.min(start + MIN_SPAN_MS, duration_ms);
+    if (end <= start) continue;
+    out.push({ text, start_ms: start, end_ms: end });
+  }
+  out.sort((a, b) => a.start_ms - b.start_ms || a.end_ms - b.end_ms);
+  const fixed: TranscriptSegment[] = [];
+  for (const t of out) {
+    const prev = fixed.at(-1);
+    if (prev && t.start_ms < prev.end_ms) {
+      if (t.start_ms > prev.start_ms) prev.end_ms = t.start_ms;
+      else continue; // same start as the previous one: keep the first
+    }
+    fixed.push(t);
+  }
+  return fixed;
+}
 
 /** Gemini sometimes returns "Needs Attention" or "needs attention" despite the enum. */
+/** A zone key, or null for "none", missing or unknown. A bad zone never drops a line. */
+export function normalizeZone(v: unknown): CarZone | null {
+  const z = normalizeEnum(v);
+  return isCarZone(z) ? z : null;
+}
+
 function normalizeEnum(v: unknown): unknown {
   return typeof v === "string" ? v.trim().toLowerCase().replace(/[\s-]+/g, "_") : v;
 }
@@ -132,7 +172,14 @@ export function repairAnalysis(raw: unknown, opts: RepairOptions): RepairResult 
     // Stable sort; ties broken by best frame.
     mentions.sort((a, b) => a.visible_start_ms - b.visible_start_ms || a.best_frame_ms - b.best_frame_ms);
 
-    lines.push({ component_name, rating: line.rating, rating_basis: line.rating_basis, note: line.note.trim(), mentions });
+    lines.push({
+      component_name,
+      rating: line.rating,
+      rating_basis: line.rating_basis,
+      note: line.note.trim(),
+      car_zone: normalizeZone(line.car_zone),
+      mentions,
+    });
   });
 
   if (lines.length === 0) {
@@ -147,7 +194,8 @@ export function repairAnalysis(raw: unknown, opts: RepairOptions): RepairResult 
   lines.sort((a, b) => a.mentions[0].visible_start_ms - b.mentions[0].visible_start_ms);
 
   // Belt and braces: the contract schema must accept what we built.
-  const analysis = validatedAnalysisSchema.parse({ model, lines, dropped });
+  const transcript = repairTranscript(top.data.transcript, duration_ms);
+  const analysis = validatedAnalysisSchema.parse({ model, lines, transcript, dropped });
   return { ok: true, analysis };
 }
 

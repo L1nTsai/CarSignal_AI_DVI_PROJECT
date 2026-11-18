@@ -3,6 +3,8 @@
  * can import these types too.
  */
 import { z } from "zod";
+import { annotationsSchema } from "../annotations";
+import { carZoneSchema } from "../carZones";
 import { LINE_RATINGS, type LineRating } from "../types/db";
 
 const rating = z.enum(LINE_RATINGS as [LineRating, ...LineRating[]]);
@@ -66,6 +68,8 @@ export const lineCreateSchema = z
     component_name: componentName,
     rating,
     note: note.default(""),
+    /** Where on the car. Left out: guessed from the name; null: not on the car. */
+    car_zone: carZoneSchema.nullable().optional(),
     /** Optional first clip; a line needs one before Send. */
     clip: rangeSchema.optional(),
   })
@@ -73,7 +77,7 @@ export const lineCreateSchema = z
 export type LineCreate = z.input<typeof lineCreateSchema>;
 
 export const linePatchSchema = z
-  .object({ component_name: componentName, note, rating })
+  .object({ component_name: componentName, note, rating, car_zone: carZoneSchema.nullable() })
   .partial()
   .strict()
   .refine((o) => Object.keys(o).length > 0, { message: "Nothing to update" });
@@ -86,10 +90,14 @@ export const reorderSchema = z
 
 export const clipCreateSchema = rangeSchema;
 
-/** Either a new range (queues a re-cut) or a thumbnail pick — not both. */
+/**
+ * One of: a new range (queues a re-cut), a thumbnail pick, or the clip's whole
+ * list of drawings (replaces it; no re-cut).
+ */
 export const clipPatchSchema = z.union([
   z.object({ start_ms: ms, end_ms: ms }).strict().pipe(rangeSchema),
   z.object({ thumbnail_frame_id: uuid }).strict(),
+  z.object({ annotations: annotationsSchema }).strict(),
 ]);
 export type ClipPatch = z.input<typeof clipPatchSchema>;
 

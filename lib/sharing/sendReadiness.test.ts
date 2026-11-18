@@ -16,6 +16,7 @@ const insp = (over: Partial<InspectionRow> = {}): InspectionRow => ({
   video_path: "i/stitched.mp4",
   duration_ms: 1000,
   share_token: null,
+  transcribed_at: null,
   created_at: "",
   updated_at: "",
   ...over,

@@ -44,6 +44,12 @@ For each line:
   Remove filler words and instructions to the app (like "mark it needs attention").
   Use ONLY what was said. Do NOT add measurements, causes, diagnoses, or repair recommendations the
   technician did not state. Keep any numbers exactly as spoken.
+- car_zone: where the component is on a top-down diagram of the car, front at the top. "l"/"left" is the
+  driver's side, "r"/"right" the passenger side. Wheels, tires, brakes and suspension at one corner go to that
+  wheel (wheel_lf, wheel_rf, wheel_lr, wheel_rr); engine-bay parts and fluids go to hood_engine; wipers go to
+  windshield; interior and cabin filter go to cabin; exhaust and anything under the car go to underbody.
+  Use "none" when the component has no single spot (e.g. "all four tires", "front brakes" covering both sides,
+  or a general comment).
 - mentions: every time the technician talks about this component:
   - quote: the technician's exact words about it, verbatim. Write spoken numbers as digits
     (e.g. "4/32", "35 psi", "12,000 miles") but do not change their value.
@@ -52,5 +58,11 @@ For each line:
   - best_frame_s: the second with the clearest, steadiest view of the component.
 
 Do not create lines for things that are only visible but never talked about, or for chit-chat ("okay, moving on").
+
+Also return transcript: everything the technician says, in order, as captions.
+- Each segment is one short sentence or phrase (at most about 12 words), verbatim, including chit-chat.
+- start_s, end_s: seconds from the start of the video when those words are spoken (not when something is on camera).
+- Segments must not overlap. Leave out silence. Write spoken numbers as digits, as in the quotes.
+
 Return JSON that matches the schema.`;
 }

@@ -11,15 +11,21 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cache } from "react";
-import { Badge, RATING_TONE } from "@/components/ui";
-import { LocalDate } from "@/components/sharing/LocalDate";
-import { ReportLineCard } from "@/components/sharing/ReportLineCard";
+import { ChevronDown, History } from "lucide-react";
+import { Brand } from "@/components/app";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { LocalDate } from "@/components/shared/LocalDate";
+import { ReportMobile } from "@/components/mobile/report/ReportMobile";
+import { Responsive } from "@/components/shared/Responsive";
+import { ReportViewer } from "@/components/sharing/ReportViewer";
+import { getDevice } from "@/lib/device";
 import { isShareToken } from "@/lib/http";
 import { getShare } from "@/lib/queries/share";
-import { RATING_LABEL, RATING_ORDER, groupByRating } from "@/lib/ratings";
+import { RATING_LABEL } from "@/lib/ratings";
 import { changeBadges, diffVersions, isEmptyDiff, type LineField, type VersionDiff } from "@/lib/sharing/diff";
 import type { ShareLine, ShareResponse } from "@/lib/types/api";
-import type { LineRating } from "@/lib/types/db";
 
 const load = cache(async (token: string, v: string | string[] | undefined): Promise<ShareResponse | null> => {
   if (!isShareToken(token)) return null;
@@ -55,117 +61,162 @@ export default async function CustomerReportPage(props: PageProps<"/r/[token]">)
   const firstSentAt = versions[0]?.sent_at ?? version.sent_at;
   const base = `/r/${encodeURIComponent(token)}`;
 
+  const notice = !isLatest ? (
+    <Alert className="border-amber-border bg-amber-bg text-amber-fg">
+      <History />
+      <AlertDescription className="flex flex-wrap items-center justify-between gap-2 text-amber-fg">
+        <span>You&apos;re viewing an older version ({version.version_number}).</span>
+        <Link href={base} className="font-medium underline">
+          See the latest
+        </Link>
+      </AlertDescription>
+    </Alert>
+  ) : null;
+
+  const info = (
+    <section className="flex flex-col gap-1">
+      <h1 className="text-2xl font-semibold tracking-tight">{vehicleName(version)}</h1>
+      <p className="text-muted-foreground">For {version.customer_name}</p>
+      <p className="text-sm text-muted-foreground">
+        Inspected <LocalDate iso={firstSentAt} />
+        {" · "}Version {version.version_number}
+        {version.version_number > 1 ? (
+          <>
+            {" · "}Updated <LocalDate iso={version.sent_at} />
+          </>
+        ) : null}
+      </p>
+      <p className="mt-1 w-fit rounded-md bg-muted px-2 py-1 font-mono text-xs text-muted-foreground">
+        VIN {version.vin}
+      </p>
+    </section>
+  );
+
+  const hasChanges = !!(diff && previous && !isEmptyDiff(diff));
+  const changes = hasChanges ? <ChangesSince previousNumber={previous!.version_number} diff={diff!} /> : null;
+  // Same list on the laptop page and in the phone's Versions tab.
+  const historyList =
+    versions.length > 1 ? (
+        <ol className="flex flex-col">
+          {[...versions].reverse().map((ver) => {
+            const current = ver.version_number === version.version_number;
+            const href = ver.version_number === latest_version_number ? base : `${base}?v=${ver.version_number}`;
+            return (
+              <li key={ver.version_number}>
+                <Link
+                  href={href}
+                  aria-current={current ? "page" : undefined}
+                  className="flex min-h-11 items-center justify-between gap-3 rounded-md px-2 text-sm hover:bg-accent aria-[current=page]:font-semibold"
+                >
+                  <span>
+                    Version {ver.version_number}
+                    {ver.version_number === latest_version_number ? " (latest)" : ""}
+                  </span>
+                  <span className="text-muted-foreground">
+                    {current ? "Viewing · " : ""}
+                    <LocalDate iso={ver.sent_at} withTime />
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+        </ol>
+    ) : null;
+  // Phone: the Versions tab.
+  const history = historyList ? (
+    <section className="flex w-full flex-col gap-2">
+      <h2 className="text-sm font-medium text-muted-foreground">Version history</h2>
+      {historyList}
+    </section>
+  ) : null;
+
+  // Laptop: everything about the report on one line, with changes and versions as menus.
+  const changeCount = hasChanges ? diff!.added.length + diff!.changed.length + diff!.removed.length : 0;
+  const infoLine = (
+    <section className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+      <h1 className="text-lg font-semibold tracking-tight">{vehicleName(version)}</h1>
+      <span className="text-muted-foreground">For {version.customer_name}</span>
+      <span className="text-muted-foreground">
+        Inspected <LocalDate iso={firstSentAt} />
+        {version.version_number > 1 ? (
+          <>
+            {" · "}Updated <LocalDate iso={version.sent_at} />
+          </>
+        ) : null}
+      </span>
+      <span className="rounded-md bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">VIN {version.vin}</span>
+      <div className="ml-auto flex items-center gap-1.5">
+        {hasChanges ? (
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm">
+                What changed <span className="text-muted-foreground">{changeCount}</span>
+                <ChevronDown />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-96">
+              <p className="text-sm font-medium">Since version {previous!.version_number}</p>
+              <ChangesList diff={diff!} />
+            </PopoverContent>
+          </Popover>
+        ) : null}
+        {historyList ? (
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm">
+                <History />
+                Version {version.version_number} of {latest_version_number}
+                <ChevronDown />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-80 p-1">
+              {historyList}
+            </PopoverContent>
+          </Popover>
+        ) : (
+          <span className="text-muted-foreground">Version {version.version_number}</span>
+        )}
+      </div>
+    </section>
+  );
+
+  const badgeRecord = Object.fromEntries(badges);
+
   return (
-    <div className="min-h-dvh">
-      <header className="border-b border-border">
-        <div className="mx-auto flex h-14 max-w-[640px] items-center px-4">
-          <span className="text-sm font-semibold tracking-tight">CarSignal</span>
-          <span className="ml-2 text-sm text-muted">Vehicle inspection</span>
+    <Responsive
+      device={await getDevice()}
+      mobile={
+        <ReportMobile
+          lines={version.lines}
+          badges={badgeRecord}
+          notice={notice}
+          info={info}
+          changes={changes ? <ChangesSince previousNumber={previous!.version_number} diff={diff!} open /> : null}
+          versions={history}
+        />
+      }
+      desktop={
+        // One screen, no page scroll: the issues list scrolls inside its own panel.
+        <div className="flex h-dvh flex-col">
+          <header className="shrink-0 border-b">
+            <div className="mx-auto flex h-12 max-w-[1400px] items-center px-4">
+              <Brand static suffix="Vehicle inspection" />
+            </div>
+          </header>
+
+          <main className="mx-auto flex min-h-0 w-full max-w-[1400px] flex-1 flex-col gap-3 px-4 pt-3 pb-4">
+            {notice}
+            {infoLine}
+            <ReportViewer lines={version.lines} badges={badgeRecord} />
+          </main>
         </div>
-      </header>
-
-      <main className="mx-auto flex max-w-[640px] flex-col gap-8 px-4 py-6 pb-[calc(2rem+env(safe-area-inset-bottom))]">
-        {!isLatest ? (
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-border bg-amber-bg px-4 py-3 text-sm text-amber-fg">
-            <span>You&apos;re viewing an older version ({version.version_number}).</span>
-            <Link href={base} className="font-medium underline">
-              See the latest
-            </Link>
-          </div>
-        ) : null}
-
-        <section className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight">{vehicleName(version)}</h1>
-          <p className="text-muted">For {version.customer_name}</p>
-          <p className="text-sm text-muted">
-            Inspected <LocalDate iso={firstSentAt} />
-            {" · "}Version {version.version_number}
-            {version.version_number > 1 ? (
-              <>
-                {" · "}Updated <LocalDate iso={version.sent_at} />
-              </>
-            ) : null}
-          </p>
-          <p className="font-mono text-xs text-subtle">VIN {version.vin}</p>
-        </section>
-
-        <Summary lines={version.lines} />
-
-        {diff && previous && !isEmptyDiff(diff) ? <ChangesSince previousNumber={previous.version_number} diff={diff} /> : null}
-
-        {groupByRating(version.lines).map((group) => (
-          <section key={group.rating} className="flex flex-col gap-3" aria-labelledby={`sec-${group.rating}`}>
-            <h2 id={`sec-${group.rating}`} className="flex items-center gap-2 text-lg font-semibold">
-              {RATING_LABEL[group.rating]}
-              <span className="text-sm font-normal text-muted">{group.lines.length}</span>
-            </h2>
-            <ul className="flex flex-col gap-4">
-              {group.lines.map((line) => (
-                <li key={line.key}>
-                  <ReportLineCard line={line} badge={badges.get(line.key) ?? null} />
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
-
-        {versions.length > 1 ? (
-          <section className="flex flex-col gap-2 border-t border-border pt-6">
-            <h2 className="text-sm font-medium text-muted">Version history</h2>
-            <ol className="flex flex-col">
-              {[...versions].reverse().map((ver) => {
-                const current = ver.version_number === version.version_number;
-                const href = ver.version_number === latest_version_number ? base : `${base}?v=${ver.version_number}`;
-                return (
-                  <li key={ver.version_number}>
-                    <Link
-                      href={href}
-                      aria-current={current ? "page" : undefined}
-                      className="flex min-h-11 items-center justify-between gap-3 rounded-md px-2 text-sm hover:bg-surface-hover aria-[current=page]:font-semibold"
-                    >
-                      <span>
-                        Version {ver.version_number}
-                        {ver.version_number === latest_version_number ? " (latest)" : ""}
-                      </span>
-                      <span className="text-muted">
-                        {current ? "Viewing · " : ""}
-                        <LocalDate iso={ver.sent_at} withTime />
-                      </span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ol>
-          </section>
-        ) : null}
-      </main>
-    </div>
+      }
+    />
   );
 }
 
 function vehicleName(v: { vehicle_year: number; vehicle_make: string; vehicle_model: string }) {
   return `${v.vehicle_year} ${v.vehicle_make} ${v.vehicle_model}`;
-}
-
-const SUMMARY_LABEL: Record<LineRating, (n: number) => string> = {
-  needs_attention: (n) => `${n} need${n === 1 ? "s" : ""} attention`,
-  monitor: (n) => `${n} to monitor`,
-  good: (n) => `${n} good`,
-};
-
-/** e.g. "2 need attention · 1 to monitor · 5 good", as text + color pills. */
-function Summary({ lines }: { lines: ShareLine[] }) {
-  const counts = RATING_ORDER.map((r) => [r, lines.filter((l) => l.rating === r).length] as const).filter(([, n]) => n > 0);
-  return (
-    <section aria-label="Summary" className="flex flex-wrap gap-2">
-      {counts.map(([rating, n]) => (
-        <Badge key={rating} tone={RATING_TONE[rating]} size="md">
-          <span aria-hidden className="size-1.5 rounded-full bg-current" />
-          {SUMMARY_LABEL[rating](n)}
-        </Badge>
-      ))}
-    </section>
-  );
 }
 
 const FIELD_TEXT: Record<Exclude<LineField, "rating">, string> = {
@@ -174,43 +225,49 @@ const FIELD_TEXT: Record<Exclude<LineField, "rating">, string> = {
   clips: "photos and clips updated",
 };
 
-function ChangesSince({ previousNumber, diff }: { previousNumber: number; diff: VersionDiff<ShareLine> }) {
+function ChangesSince({ previousNumber, diff, open }: { previousNumber: number; diff: VersionDiff<ShareLine>; open?: boolean }) {
   const count = diff.added.length + diff.changed.length + diff.removed.length;
   return (
-    <details className="group rounded-lg border border-border">
+    <details open={open} className="group w-full max-w-2xl rounded-xl ring-1 ring-foreground/10">
       <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 text-sm font-medium [&::-webkit-details-marker]:hidden">
         <span>
           What changed since version {previousNumber}
-          <span className="ml-2 font-normal text-muted">{count}</span>
+          <span className="ml-2 font-normal text-muted-foreground">{count}</span>
         </span>
-        <span aria-hidden className="text-muted transition-transform group-open:rotate-180">
-          ▾
-        </span>
+        <ChevronDown aria-hidden className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
       </summary>
-      <ul className="flex flex-col gap-3 border-t border-border px-4 py-3 text-sm">
-        {diff.added.map((l) => (
-          <li key={`a-${l.key}`}>
-            <span className="font-medium">Added:</span> {l.component_name} ({RATING_LABEL[l.rating]})
-          </li>
-        ))}
-        {diff.changed.map(({ before, after, fields }) => (
-          <li key={`c-${after.key}`}>
-            <span className="font-medium">Updated:</span> {after.component_name}
-            {fields.includes("component_name") ? <span className="text-muted"> (was {before.component_name})</span> : null}
-            {" — "}
-            {fields
-              .map((f) =>
-                f === "rating" ? `${RATING_LABEL[before.rating]} → ${RATING_LABEL[after.rating]}` : FIELD_TEXT[f],
-              )
-              .join(", ")}
-          </li>
-        ))}
-        {diff.removed.map((l) => (
-          <li key={`r-${l.key}`}>
-            <span className="font-medium">Removed:</span> {l.component_name}
-          </li>
-        ))}
-      </ul>
+      <div className="border-t px-4 py-3">
+        <ChangesList diff={diff} />
+      </div>
     </details>
+  );
+}
+
+function ChangesList({ diff }: { diff: VersionDiff<ShareLine> }) {
+  return (
+    <ul className="flex flex-col gap-3 text-sm">
+      {diff.added.map((l) => (
+        <li key={`a-${l.key}`}>
+          <span className="font-medium">Added:</span> {l.component_name} ({RATING_LABEL[l.rating]})
+        </li>
+      ))}
+      {diff.changed.map(({ before, after, fields }) => (
+        <li key={`c-${after.key}`}>
+          <span className="font-medium">Updated:</span> {after.component_name}
+          {fields.includes("component_name") ? <span className="text-muted-foreground"> (was {before.component_name})</span> : null}
+          {" — "}
+          {fields
+            .map((f) =>
+              f === "rating" ? `${RATING_LABEL[before.rating]} → ${RATING_LABEL[after.rating]}` : FIELD_TEXT[f],
+            )
+            .join(", ")}
+        </li>
+      ))}
+      {diff.removed.map((l) => (
+        <li key={`r-${l.key}`}>
+          <span className="font-medium">Removed:</span> {l.component_name}
+        </li>
+      ))}
+    </ul>
   );
 }

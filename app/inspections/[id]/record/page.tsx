@@ -1,7 +1,9 @@
 /** /inspections/[id]/record — the phone recorder (plan §6). */
 import { notFound } from "next/navigation";
-import { Recorder } from "@/components/recorder/Recorder";
-import { ButtonLink, EmptyState, Page } from "@/components/ui";
+import { Recorder } from "@/components/mobile/record/Recorder";
+import { EmptyState, Page } from "@/components/app";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
 import { sql } from "@/lib/db";
 import { env } from "@/lib/env";
 import { isUuid } from "@/lib/http";
@@ -22,16 +24,16 @@ export default async function RecordPage({ params }: PageProps<"/inspections/[id
       <Page title="Record inspection" back={{ href: `/inspections/${id}`, label: "Inspection" }}>
         <EmptyState title="Recording is finished">
           <p>Nothing more can be added to this inspection.</p>
-          <ButtonLink href={`/inspections/${id}`} variant="primary" className="mt-4">
-            Open inspection
-          </ButtonLink>
+          <Button asChild className="mt-4">
+            <Link href={`/inspections/${id}`}>Open inspection</Link>
+          </Button>
         </EmptyState>
       </Page>
     );
   }
 
-  const segments = await sql<Pick<VideoSegmentRow, "segment_number" | "status" | "original_path" | "mime_type">[]>`
-    select segment_number, status, original_path, mime_type
+  const segments = await sql<Pick<VideoSegmentRow, "segment_number" | "status" | "original_path" | "mime_type" | "video_cut_at_ms">[]>`
+    select segment_number, status, original_path, mime_type, video_cut_at_ms
     from video_segments where inspection_id = ${id} order by segment_number`;
 
   return (
@@ -43,6 +45,7 @@ export default async function RecordPage({ params }: PageProps<"/inspections/[id
         status: s.status,
         url: mediaUrl(s.original_path),
         mimeType: s.mime_type,
+        videoCutAtMs: s.video_cut_at_ms,
       }))}
     />
   );

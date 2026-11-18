@@ -60,11 +60,14 @@ The brief's examples:
 | Customer page | A summary at the top (counts by rating), then lines **grouped by rating, Needs attention first**, keeping the tech's order within each group. Shows name, rating, note, photos and clips. No quotes, no edit controls, no AI internals. |
 | Customer approval | **Out of scope.** |
 | Home page | A basic list of inspections at `/`. |
-| Orientation | **Either, whichever the technician prefers.** The recorder and the tips don't steer it, and the pipeline and players must handle portrait, landscape, and a switch partway through. |
+| Orientation | **Either, whichever the technician prefers.** The recorder and the tips don't steer it, and the pipeline and players must handle portrait, landscape, and a switch partway through. The camera opens in the shape the phone is held (tall when upright), and the recorder re-checks it because iOS sometimes hands back the wrong shape (see section 6). |
 | Deleting inspections | Allowed from the home list for any inspection that isn't processing, **including sent ones** (changed 2026-11-17; migration `0002`). Deleting a sent inspection deletes its sent versions too, so the customer link stops working; the confirm says so. |
 | Re-process | A **development-only** button that re-runs the AI on an existing recording without recording again. It replaces all lines. |
+| Clip drawings | The tech can **draw on a clip** (freehand pen, red / yellow / white). Each drawing starts at the playhead and shows for a few seconds (default 3 s, 1–10 s). They're stored as data (`clips.annotations`, migration `0005`) and drawn **as an overlay** on the customer's player, not burned into the mp4, so editing one never re-cuts. Thumbnails are never drawn on. Decided 2026-11-17. |
+| Car diagram | The customer page shows a **top-down car** with each issue's spot tinted by rating (worst per spot) and the playing issue outlined; tap a spot to play it. Gemini picks each line's zone (`car_zone`, `lib/carZones.ts`; "left" is the driver's side), the tech can change it, and each sent version freezes it (migration `0006`). Decided 2026-11-17. |
+| Recording check | Each uploaded piece is checked: if its picture ends well before its sound, the tech is told which part froze and when, and Finish asks before going ahead (migration `0007`). Decided 2026-11-17. |
 | Every line needs media | A line can't be sent unless it has **at least one ready clip** with a thumbnail. |
-| Known risk | There's an open WebKit bug about iOS 26 MediaRecorder corrupting files. The owner said to deal with it only if it happens. **If recordings come out corrupted on an iPhone, stop and tell the owner. Don't add a workaround on your own.** |
+| Known risk: iPhone recording | There's an open WebKit bug about iOS MediaRecorder corrupting files. **It happened** (2026-11-17): on an iPhone, three recordings stopped writing video 10–17 s in while the sound kept going, so the stitched video froze on its last frame. The owner then approved the mitigations in section 6 (camera watchdog, automatic restart of a stalled take, server check of each piece, Finish blocked on a flagged piece unless the tech chooses to go ahead). **Any further workaround for recording problems still needs the owner's say-so.** |
 
 ---
 
@@ -521,6 +524,31 @@ on conflict (id) do nothing;
 - Send fails, and nothing is saved, if any line has an empty note, no clips, a clip that isn't ready, or a clip without a thumbnail.
 - History tables (`report_version_*`, `edits`) intentionally have **no foreign keys** to live lines or clips, so they survive deletes.
 
+### Migration `0005_clip_annotations.sql` (clip drawings)
+
+- `clips.annotations jsonb not null default '[]'`: an array, at most 256 KB. Shape (validated by
+  `lib/annotations.ts#annotationsSchema`): `{ id, start_ms, end_ms, strokes: [{ color, points: [[x, y], ...] }] }[]`.
+  Times are on the **stitched timeline** like the clip's range, so a range change doesn't move a drawing; drawings
+  outside the range are kept but hidden. `x, y` are 0..1 over the full frame (every piece is padded to one frame
+  size, so the coordinates fit the stitched video and every clip).
+- `log_edit` also watches `annotations`, so a drawing is a tech edit and counts as an unsent change.
+- `report_version_clips` gains `clip_start_ms`, `clip_end_ms` and `annotations`; `send_report` copies them. The share
+  query converts to clip time (`toClipTime`) and drops the ids. Versions sent before `0005` have no range and no drawings.
+
+### Migration `0006_car_zones.sql` (car diagram)
+
+- `line_items.car_zone`, `ai_suggestions.car_zone` and `report_version_lines.car_zone`: nullable text, checked
+  against the keys in `lib/carZones.ts#CAR_ZONE_KEYS` (keep both lists in step). null = not on the car.
+- `log_edit` also watches `car_zone` (a zone change is a tech edit and an unsent change); `send_report` copies it.
+- The worker stores the AI's zone, or `guessZone(component_name)` when the AI said "none". A tech-added line without
+  a zone gets the same guess. Versions sent before `0006` get the guess at read time.
+
+### Migration `0007_segment_video_check.sql` (recording check)
+
+- `video_segments.video_cut_at_ms integer check (>= 0)`: where, on the piece's own timeline, the picture stopped while
+  the sound kept going. null = fine, or not checked (pieces from before `0007`, or the probe failed). Set by the
+  segments route after the upload (`lib/segmentCheck.ts`); never read by the worker or the customer page.
+
 ### Derived values (not stored)
 
 - **Line source:** a line is AI-created if an `ai_suggestions` row exists, otherwise tech-created.
@@ -571,6 +599,11 @@ getUserMedia({
 
 This requires HTTPS, which the tunnel provides.
 
+The recorder asks for a tall picture (720×1280) when the phone is upright and a wide one when it's on its side.
+iOS Safari doesn't always honor that (an upright iPhone handed back a wide picture), so `openCamera` checks the shape
+it got and, if it's wrong, asks again with the sizes swapped, then with no size; if nothing matches it keeps the
+normal request. Once a part is recorded the orientation is locked, so every part matches.
+
 **Format.** Pick the first value that `MediaRecorder.isTypeSupported` accepts:
 
 1. `video/mp4;codecs=avc1,mp4a.40.2`
@@ -603,6 +636,20 @@ Then record a replacement.
 
 - Ask for a screen Wake Lock while recording (in try/catch).
 - If the page becomes hidden while recording, treat it as Pause so the recorded piece is saved.
+- **Camera watchdog.** iOS can take the camera away from Safari mid-take (Control Center, flashlight, a call
+  banner, heat) while the microphone keeps going; the piece then freezes on its last frame. While recording, if the
+  video track mutes or the preview gets no new frame for 1.5 s (`requestVideoFrameCallback`), stop the take (keep it),
+  reopen the camera and tell the tech to Resume.
+- **Recorder watchdog.** Safari's MediaRecorder can stop writing video while the camera and sound carry on (seen on
+  iPhone at 10 s and 17 s in). The recorder collects data every 500 ms (`rec.start(500)`); if the last 2 s brought
+  data but under 70 KB (sound only; working video is 220–340 KB/s, `recorderStalled`), it ends the take and starts a
+  new one on the same camera by itself, with a short notice. A third stall within 30 s falls back to the camera
+  watchdog's pause + reopen.
+- **Upload check.** After storing a piece, the segments route probes it with ffprobe (`lib/segmentCheck.ts`). If the
+  picture ends more than 3.5 s before the sound (a packet counts for at most 0.5 s: Safari stretches the last frame
+  over the rest of the take), it saves `video_segments.video_cut_at_ms` (migration `0007`) and returns
+  it. The parts strip marks that part ("Video froze at 0:17"), and Finish returns 409 `video_cut` until the tech
+  retakes it or taps **Finish anyway** (`{ allow_video_cut: true }`). A failed probe never fails the upload.
 
 **Upload.** Send each piece with `POST /api/inspections/[id]/segments?n={number}`, with the raw blob as the body and its MIME type as `content-type`.
 
@@ -751,6 +798,11 @@ Return JSON that matches the schema.
 
 ### Response schema
 
+Each line also has a required `car_zone` (added with migration `0006`): one of the zone keys in `lib/carZones.ts`, or
+`"none"`. The prompt explains it ("left" = driver's side; "none" when there's no single spot, e.g. "front brakes"
+covering both sides). `"none"` and unknown values become null in `validate.ts`, so a bad zone never drops a line.
+`lib/ai/responseSchema.ts` is the source of truth; the block below is the original draft.
+
 ```ts
 const responseSchema = {
   type: Type.OBJECT,
@@ -785,6 +837,19 @@ const responseSchema = {
   required: ['lines'],
 };
 ```
+
+### Transcript (captions)
+
+The same call also returns `transcript`: everything the technician says, verbatim, as short caption
+segments `{ text, start_s, end_s }` timed to when the words are spoken (the prompt and
+`lib/ai/responseSchema.ts` are the source of truth; the blocks above predate it). `repairTranscript`
+clamps, sorts and trims overlaps; a missing transcript is not an error. The worker replaces the
+inspection's rows in `transcript_segments` (migration `0003`) inside the same `'ai'` transaction as the
+lines. `InspectionDetail.transcript` feeds the editor's always-on captions and Transcript tab. It's
+tech-only: it never goes into a report version. Captions and the transcript come only from this
+transcription, never from mention quotes or other AI output. Saving also sets `inspections.transcribed_at`
+(migration `0004`), so an empty transcript with that set means nothing was said ("Nothing was said in this
+recording."), while null means it was processed before transcripts existed (the tab suggests a re-process).
 
 ### Validate and repair the output
 
@@ -868,7 +933,7 @@ The "pairing" is just both devices opening the same inspection. No pairing state
 
 The tech can close the page and come back later.
 
-During Converting and AI reviewing there's a **Cancel processing** button with an in-page confirm. It lands on the failed view, titled "Processing cancelled". **Cancelling is final** (changed 2026-11-17): there's no Retry, and `POST .../retry` returns 409 for a cancelled inspection; it can only be deleted from the home list. Added 2026-11-17.
+During Converting and AI reviewing there's a **Cancel processing** button with an in-page confirm. Cancelling sends the inspection back to a **draft** (status `recording`, parts kept) and returns to the home list; the tech can continue recording or finish it again. It is not `failed`: that is only for real errors (AI or conversion). Changed 2026-11-17.
 
 **`failed`.** Shows the failure reason and a **Retry** button.
 
@@ -896,7 +961,21 @@ During Converting and AI reviewing there's a **Cancel processing** button with a
 - **Bottom bar:** **Send to customer**, which becomes **Send update** after the first send.
   - It's disabled with a list of reasons when Send would fail.
   - After a successful send, it shows the share link with Copy and a QR code.
-- **On a laptop:** two columns, with the line list on the left and the clip panel on the right.
+- **On a laptop:** (`components/editor/studio`) the video top-left with a seek bar and Mark In / Mark Out; flags on
+  the seek bar mark where each issue's clips start (numbered, colored by rating; click to select). Under the video,
+  one column per issue with its clips listed underneath. On the right two tabs. Details: customer and vehicle, the
+  selected issue, and the selected clip (its range, delete). Thumbnail: the selected clip's photo
+  picker. Transcript: every quote in time order, click to jump. Ranges are set with Mark In / Mark Out; a bar under the video offers Save / Revert while a
+  range is changed. Clips are always in time order: saving a range or adding a clip reorders the line's clips by start
+  time, so the first (main) clip is the earliest. Range edits are drafts until Save. Shortcuts: Space, ←/→, I/O, P, Enter, Esc.
+  Phones keep the one-column layout with the full-screen clip panel. On the phone's Timeline tab there are no big New clip / New issue buttons: **New clip** is in the video controls next to Draw, **New issue** is a **+** at the end of the issue header (arrows), and the clip cards and the selected-clip row are compact so the clips stay visible above the tab bar.
+- **Draw** (laptop and phone): with a saved clip selected and the playhead inside it, **Draw** (shortcut D) pauses the
+  video and turns the frame into a drawing surface (mouse, pen or finger). An amber bar offers the colors, Undo,
+  Clear, how long it shows (1–10 s, default 3 s), Cancel (Esc) and **Save drawing** (Enter). The seek bar and the
+  rest of the editor are inert while drawing. On the phone, drawing goes full screen (the video and the drawing bar fill the screen); Save or Cancel returns to the editor. Saved drawings play over the video in the editor too, and the clip's
+  **Drawings** list shows when each starts, jumps to it, and deletes it with a confirm. On the laptop it's the **Drawings (n)** menu in the clip bar under the video (with the clip's range, cut status / Retry cut and Delete clip; Details no longer has Clip or Drawings sections); on the phone it's under the selected clip on the Timeline tab, hidden until the clip has a drawing.
+- **Where on the car** (issue section): a small top-down car; click a part to set the line's zone, or **Not on the
+  car**. Shows when it differs from the AI's suggestion. Add line shows the zone guessed from the name.
 - **Re-process (development only):** shown when `ENABLE_REPROCESS=true` and the inspection is `ready_for_review`, never after sending. An in-page confirm warns: *"This replaces all lines, including your edits."*
 
 ### `/r/[token]` Customer page
@@ -910,6 +989,17 @@ This page is read-only and shows the **latest version**.
 - **"What changed since version N−1"** (collapsible): lines added, changed and removed.
 - **Version history:** links to older versions (`/r/[token]?v=1`).
 - **Never shown:** quotes, AI originals, warnings, edit controls.
+- **Where on your car** (`CarMap`): the top-down car, each zone with an issue tinted by its worst rating, the playing
+  issue's zone outlined, tap (or Enter) to play its worst issue. A legend shows the ratings as text, and issues with no
+  zone are listed underneath. The car lies sideways (front to the right, driver's side on top) at the top of the
+  issues panel, with the filter chips and issues below it, on laptop and phone (owner, 2026-11-17).
+  On the laptop the car and chips stay fixed and only the issue cards scroll. On the phone the car is compact (small
+  diagram, one-line heading, tight legend) and there is no list: **one card** at the bottom shows the playing issue
+  (name, rating, full note, clip buttons) and switches, with a short fade, whenever playback moves to a new issue
+  (a clip ended, the arrows, or a tap on the car). There are no filter chips on the phone. The card fits above the tab bar; a long note scrolls
+  inside the card, never under the bar (owner, 2026-11-17).
+- **Drawings** from the tech play over the clip, each during its window, aligned to the frame (`AnnotationOverlay`).
+  Never over the photo. A clip with drawings hides the native fullscreen button, which would hide the overlay.
 - **Players and photos** fit both portrait and landscape media without cropping (`object-fit: contain`, with a max height so the page stays scrollable).
 
 ---
@@ -929,18 +1019,18 @@ This page is read-only and shows the **latest version**.
 | `PATCH /api/inspections/[id]` | Customer and vehicle fields |
 | `DELETE /api/inspections/[id]` | Any status except `processing` (409, to avoid racing the worker). Deletes the row (everything cascades, including sent versions), then all Storage files under `{id}/`. |
 | `POST /api/inspections/[id]/reprocess` | Development only: returns `404` unless `ENABLE_REPROCESS=true`. Only from `ready_for_review`. Sets `processing`/`analyzing` and queues `process_inspection`, which replaces all lines. |
-| `POST /api/inspections/[id]/segments?n=` | Upload a piece. Only allowed while `recording`. |
+| `POST /api/inspections/[id]/segments?n=` | Upload a piece. Only allowed while `recording`. Returns `{ segment_number, status, video_cut_at_ms }` (the check in section 6). |
 | `DELETE /api/inspections/[id]/segments/[n]` | Retake. Only while `recording`, and only the highest `n`. |
-| `POST /api/inspections/[id]/finish` | Requires ≥1 segment, all `uploaded`. Sets `processing`/`converting` and queues `process_inspection`. |
-| `POST /api/inspections/[id]/cancel` | Only while `processing` and the step is `converting` or `analyzing` (409 otherwise; cutting is quick and lines are saved). Sets `failed` with "Processing was cancelled." and fails queued jobs. A running job skips the AI step if it hasn't started it, or discards its result. |
-| `POST /api/inspections/[id]/retry` | Only from `failed`, and not after a cancel (409; cancelling is final). Sets `processing` and queues the job again. |
+| `POST /api/inspections/[id]/finish` | Requires ≥1 segment, all `uploaded`. Sets `processing`/`converting` and queues `process_inspection`. `409` `code: video_cut` while a piece has `video_cut_at_ms`, unless the body is `{ allow_video_cut: true }`. |
+| `POST /api/inspections/[id]/cancel` | Only while `processing` and the step is `converting` or `analyzing` (409 otherwise; cutting is quick and lines are saved). Sets the inspection back to `recording` (a draft, parts kept) and fails queued jobs. A running job skips the AI step if it hasn't started it, or discards its result. |
+| `POST /api/inspections/[id]/retry` | Only from `failed`. Sets `processing` and queues the job again. |
 | `POST /api/inspections/[id]/lines` | Add a tech line |
 | `POST /api/inspections/[id]/lines/reorder` | Calls `reorder_lines` |
 | `PATCH /api/lines/[lineId]` | name, note, rating |
 | `DELETE /api/lines/[lineId]` | Delete a line (its clips cascade) |
 | `POST /api/lines/[lineId]/clips` | Add a clip `{ start_ms, end_ms }` and queue `cut_clip` |
 | `POST /api/lines/[lineId]/clips/reorder` | Calls `reorder_clips` |
-| `PATCH /api/clips/[clipId]` | `{ start_ms, end_ms }` sets `pending` and queues `cut_clip`. `{ thumbnail_frame_id }` sets the thumbnail directly. |
+| `PATCH /api/clips/[clipId]` | `{ start_ms, end_ms }` sets `pending` and queues `cut_clip`. `{ thumbnail_frame_id }` sets the thumbnail directly. `{ annotations }` replaces the clip's drawings (no re-cut); a new or moved drawing must show inside the clip's range (400). |
 | `DELETE /api/clips/[clipId]` | Delete a clip |
 | `POST /api/clips/[clipId]/frames` | `{ timestamp_ms }` queues `extract_frame` |
 | `POST /api/inspections/[id]/send` | Calls `send_report` and returns `{ shareUrl }` |
@@ -980,8 +1070,8 @@ Open `PUBLIC_BASE_URL` on both the laptop and the phone. **Don't use `localhost`
 **`.env.example`**
 
 ```
-DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
-SUPABASE_URL=http://127.0.0.1:54321
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55322/postgres   # ports are 55xxx, see supabase/config.toml
+SUPABASE_URL=http://127.0.0.1:55321
 SUPABASE_SERVICE_ROLE_KEY=
 STORAGE_BUCKET=inspection-media
 GEMINI_API_KEY=
@@ -1023,6 +1113,7 @@ Test logic that can actually break. Don't aim for a coverage number.
   - `unsupportedNumbers`
   - Gemini output validation and repair, using recorded JSON fixtures that include bad timestamps and empty quotes
   - the version diff: added, changed, removed
+  - the recording check: `trackEnds` / `videoCutAt` (a picture that stops early, Safari's stretched last frame) and `recorderStalled`
 - **Database tests** against the local DB (`npm run test:db`, `tests/db/`; each test rolls back):
   - `send_report` refuses each invalid case and creates correct frozen copies
   - the constraints in section 4 reject bad rows
@@ -1030,8 +1121,10 @@ Test logic that can actually break. Don't aim for a coverage number.
 - **Manual end-to-end checklist:**
   - record with two pauses and a retake
   - record once in portrait, once in landscape, and once switching between them partway through
+  - on an iPhone: start recording, then open Control Center or turn on the flashlight; the recorder should pause with the camera warning and Resume should work
+  - upload a piece whose picture stops early; its part should be marked and Finish should ask before going ahead
   - process
-  - edit a rating, a clip range and a thumbnail
+  - edit a rating, a clip range and a thumbnail; draw on a clip (full screen on the phone) and check it plays on the customer page
   - send
   - open the link on another phone
   - edit again and Send update; check the badges and older versions

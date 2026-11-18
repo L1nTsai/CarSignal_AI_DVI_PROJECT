@@ -8,14 +8,19 @@
  *   `uploaded` yet (a retried upload). An `uploaded` piece is never replaced:
  *   retake it with DELETE first.
  * - The body is streamed straight into Storage, never buffered.
+ * - Once stored, the piece is checked: if its picture stops well before its
+ *   sound (iOS took the camera mid-take), `video_cut_at_ms` is saved and
+ *   returned so the recorder can offer a retake. A failed check is logged and
+ *   treated as fine; it never fails the upload.
  *
- * 201 { segment_number, status: "uploaded" }
+ * 201 { segment_number, status: "uploaded", video_cut_at_ms }
  */
 import { NextResponse, type NextRequest } from "next/server";
 import { sql } from "@/lib/db";
 import { isUuid, jsonError } from "@/lib/http";
 import { storagePaths } from "@/lib/paths";
 import { isAllowedSegmentMime, MAX_SEGMENTS } from "@/lib/recording";
+import { checkSegmentVideo } from "@/lib/segmentCheck";
 import { removeObjects, uploadStream } from "@/lib/storage";
 import type { InspectionStatus, SegmentStatus } from "@/lib/types/db";
 
@@ -96,5 +101,17 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/inspections
   }
   if (claim.previousPath) await removeObjects([claim.previousPath]).catch(() => {});
 
-  return NextResponse.json({ segment_number: n, status: "uploaded" as const }, { status: 201 });
+  // 4. Did the picture run as long as the sound?
+  let videoCutAtMs: number | null = null;
+  try {
+    videoCutAtMs = await checkSegmentVideo(path);
+  } catch (err) {
+    console.error("segment check failed", { id, n, err });
+  }
+  await sql`update video_segments set video_cut_at_ms = ${videoCutAtMs} where id = ${claim.segmentId}`;
+
+  return NextResponse.json(
+    { segment_number: n, status: "uploaded" as const, video_cut_at_ms: videoCutAtMs },
+    { status: 201 },
+  );
 }
