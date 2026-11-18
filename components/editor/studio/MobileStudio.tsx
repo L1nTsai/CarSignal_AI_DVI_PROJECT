@@ -21,6 +21,7 @@ import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Brush, Camera, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ClipboardList, Film, Loader2, MessageSquareText, Pause, Pencil, Check, Play, Plus, Volume2, VolumeX } from "lucide-react";
 import { RATING_TONE } from "@/components/app";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/cn";
 import { scrollToFront } from "./scrollToFront";
 import { formatMs, NUDGE_MS } from "@/lib/editor/clipRange";
@@ -28,6 +29,7 @@ import type { ClipDetail, LineDetail } from "@/lib/types/api";
 import { useEditor } from "@/components/shared/editor/context";
 import { lineWarnings } from "@/components/shared/editor/lineWarnings";
 import { Captions, EditBar, SeekBar, type EditState } from "./Viewer";
+import { insideDialog } from "./ClipBar";
 import { DeleteClip, DrawingsSection, SidePanel } from "./SidePanel";
 import { AnnotationOverlay } from "@/components/shared/annotations/AnnotationOverlay";
 import { DrawBar } from "@/components/shared/annotations/DrawBar";
@@ -343,7 +345,7 @@ function IssueSection({
                 const r = rangeOf(key);
                 const selected = selection?.clipId === c.id;
                 return (
-                  <li key={c.id} data-clip-id={c.id} className="w-32 shrink-0">
+                  <li key={c.id} data-clip-id={c.id} className="w-32 min-w-32 max-w-32 shrink-0">
                     <button
                       type="button"
                       aria-pressed={selected}
@@ -359,8 +361,10 @@ function IssueSection({
                     >
                       <span className="relative block aspect-video overflow-hidden rounded-md bg-muted">
                         {c.thumbnail_url ? (
+                          // Positioned to fill the box: iPhone Safari ignores height:100% on an image inside an
+                          // aspect-ratio box, which showed a portrait frame zoomed in on its top.
                           // eslint-disable-next-line @next/next/no-img-element -- proxied media
-                          <img src={c.thumbnail_url} alt="" className="media size-full" />
+                          <img src={c.thumbnail_url} alt="" className="media absolute inset-0 size-full" />
                         ) : null}
                         {c.status !== "ready" ? (
                           <span className="absolute inset-0 flex items-center justify-center gap-1 bg-black/60 text-white">
@@ -376,14 +380,16 @@ function IssueSection({
                           </span>
                         ) : null}
                       </span>
-                      <span className="flex items-center gap-1 px-0.5">
-                        <span className="font-medium">Clip {i + 1}</span>
+                      <span className="flex min-w-0 flex-col px-0.5">
+                        <span className="flex items-center gap-1 font-medium whitespace-nowrap">
+                          Clip {i + 1}
+                          {isDirty(key) ? <span className="ml-auto text-amber-fg">•</span> : null}
+                        </span>
                         {r ? (
-                          <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
+                          <span className="font-mono text-[11px] whitespace-nowrap text-muted-foreground tabular-nums">
                             {formatMs(r.start)}–{formatMs(r.end)}
                           </span>
                         ) : null}
-                        {isDirty(key) ? <span className="ml-auto text-amber-fg">•</span> : null}
                       </span>
                     </button>
                   </li>
@@ -393,8 +399,27 @@ function IssueSection({
           )}
 
           {selClip ? (
-            <div className="flex items-center gap-2 rounded-lg border bg-card px-2 py-1">
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card px-2 py-1">
               <span className="mr-auto text-sm font-medium">Clip {clipNumber(l, selClip.id)}</span>
+              {/* Drawings: only when the clip has some, and in a popup, so the list doesn't take room here. */}
+              {selClip.annotations.length > 0 ? (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button size="sm" variant="outline" aria-label={`Drawings (${selClip.annotations.length})`}>
+                      <Brush />
+                      {selClip.annotations.length}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    align="end"
+                    className="w-[min(20rem,calc(100vw-2rem))]"
+                    onInteractOutside={insideDialog}
+                    onFocusOutside={insideDialog}
+                  >
+                    <DrawingsSection clip={selClip} player={player} hideWhenEmpty />
+                  </PopoverContent>
+                </Popover>
+              ) : null}
               <Button
                 size="sm"
                 variant={editing ? "default" : "outline"}
@@ -413,7 +438,6 @@ function IssueSection({
               />
             </div>
           ) : null}
-          {selClip ? <DrawingsSection clip={selClip} player={player} hideWhenEmpty /> : null}
         </>
       ) : (
         <div className="flex flex-col items-center gap-3 py-6 text-center">

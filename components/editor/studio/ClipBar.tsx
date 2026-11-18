@@ -16,7 +16,7 @@ import type { Player } from "./usePlayer";
 import { clipNumber } from "./types";
 
 /** A delete confirm opened from inside the popover lives in a dialog outside it; don't close the popover for that. */
-function insideDialog(e: { target: EventTarget | null; preventDefault: () => void }) {
+export function insideDialog(e: { target: EventTarget | null; preventDefault: () => void }) {
   if (e.target instanceof Element && e.target.closest('[role="alertdialog"],[role="dialog"]')) e.preventDefault();
 }
 
